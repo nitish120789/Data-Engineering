@@ -96,6 +96,36 @@ This platform enforces automated performance budgets:
 
 ---
 
+## Autonomous Failover System (Azure SQL)
+
+This platform implements a self-healing database failover architecture using event-driven design:
+
+- Health checks monitor database availability
+- Heartbeat logic tracks repeated failures
+- Events are generated when failure thresholds are exceeded
+- Dispatcher routes events to execution layer
+- Automated pipeline executes recovery actions
+
+### Architecture Flow
+
+```mermaid
+flowchart LR
+A[Health Check] --> B[Heartbeat Logic]
+B --> C[Event Emitter]
+C --> D[Dispatcher]
+D --> E[Execution Layer]
+E --> F[Recovery Action]
+```
+
+### Outcome
+
+- Zero manual intervention
+- Faster recovery response
+- Reduced operational risk
+- Production-grade resilience
+
+---
+
 ## Benchmark Snapshot
 
 | Format | Query Time | Storage |
