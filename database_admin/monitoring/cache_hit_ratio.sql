@@ -1,0 +1,1 @@
+SELECT sum(blks_hit) / nullif(sum(blks_hit + blks_read),0) AS cache_hit_ratio FROM pg_stat_database;
