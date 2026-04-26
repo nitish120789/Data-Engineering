@@ -1,0 +1,1 @@
+select order_id, cast(price as float) as price from raw_orders;
