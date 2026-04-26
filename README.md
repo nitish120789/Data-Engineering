@@ -80,6 +80,22 @@ F --> G[Alerts]
 
 ---
 
+## Performance Governance (CI/CD Gate)
+
+This platform enforces automated performance budgets:
+
+- Every pull request triggers benchmark execution
+- Query performance is compared against baseline metrics
+- If regression exceeds 10%, the pipeline fails automatically
+
+### Outcome
+
+- Prevents performance degradation in production
+- Enforces database SLAs
+- Aligns engineering with cost efficiency
+
+---
+
 ## Benchmark Snapshot
 
 | Format | Query Time | Storage |
