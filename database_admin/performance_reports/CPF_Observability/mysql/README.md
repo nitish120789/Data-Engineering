@@ -24,10 +24,13 @@ Generate AWR-style HTML performance insights for **mysql** with default **30-min
 
 - Symptom: `No such file or directory` when running `./run_oneoff.sh`
 	- Likely cause: CRLF line endings on Linux shell scripts.
-	- Fix: `sed -i 's/\r$//' scripts/*.sh`
+	- Fix: `sed -i 's/\r$//' scripts/*.sh config/*.env`
 - Symptom: `Permission denied`
 	- Likely cause: execute bit not set.
 	- Fix: `chmod 750 scripts/*.sh`
+- Symptom: `: command not found .../config/default.env: line N`
+	- Likely cause: `default.env` has CRLF or hidden BOM characters.
+	- Fix: `sed -i 's/\r$//' config/default.env`
 
 ## Modes
 - Scheduled mode: `RUN_MODE=scheduled` (default)

@@ -22,8 +22,39 @@ if ! command -v mysql >/dev/null 2>&1; then
 	exit 1
 fi
 
-# shellcheck disable=SC1090
-source "${CONFIG_FILE}"
+load_config() {
+	local line
+	while IFS= read -r line || [[ -n "${line}" ]]; do
+		# Remove UTF-8 BOM on first line (if present) and any CRLF carriage return.
+		line="${line#$'\xEF\xBB\xBF'}"
+		line="${line%$'\r'}"
+
+		# Skip empty lines and comments.
+		[[ -z "${line}" || "${line}" == \#* ]] && continue
+
+		# Accept only KEY=VALUE lines.
+		if [[ "${line}" != *=* ]]; then
+			continue
+		fi
+
+		local key="${line%%=*}"
+		local value="${line#*=}"
+
+		# Trim whitespace around key/value.
+		key="${key#${key%%[![:space:]]*}}"
+		key="${key%${key##*[![:space:]]}}"
+		value="${value#${value%%[![:space:]]*}}"
+		value="${value%${value##*[![:space:]]}}"
+
+		case "${key}" in
+		SNAPSHOT_INTERVAL_MINUTES|RETENTION_DAYS|RUN_MODE|OUTPUT_ROOT|MYSQL_LOGIN_PATH|MYSQL_HOST|MYSQL_PORT|MYSQL_USER|MYSQL_DATABASE|MYSQL_PASSWORD)
+			export "${key}=${value}"
+			;;
+		esac
+	done < "${CONFIG_FILE}"
+}
+
+load_config
 
 # Allow environment variables to override values from config/default.env.
 MYSQL_LOGIN_PATH="${MYSQL_LOGIN_PATH:-}"
