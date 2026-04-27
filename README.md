@@ -115,26 +115,38 @@ Canonical governance documents:
 
 ## Runbooks and Reliability Standards
 
-Operational runbooks should follow one format and include preparation, verification, and rollback.
+**Operational runbooks are the primary resource for incident response and operational procedures.** Each follows a standardized format (Summary, Impact, Preparation, Procedure, Verification, Rollback, Communication, Evidence).
 
-- Runbook index:
-	- `docs/runbooks/incident.md`
-- PostgreSQL incident response:
-	- `database_admin/sre/runbooks/incident_response.md`
-- Failover procedure:
-	- `database_admin/sre/runbooks/failover_procedure.md`
-- Disaster recovery:
-	- `database_admin/sre/runbooks/disaster_recovery.md`
+### Critical Path Runbooks (Sev-1 Incidents)
 
-Minimum reliability controls expected in each runbook:
+- [Incident Response - PostgreSQL](database_admin/sre/runbooks/incident_response.md) - stabilize service degradation; <10 min target
+- [Lock/Deadlock Triage & Resolution](database_admin/sre/runbooks/lock-deadlock-triage-and-resolution.md) - resolve blocking/deadlock; <5 min target
+- [Failover Procedure](database_admin/sre/runbooks/failover_procedure.md) - promote replica; <15 min target
+- [Disaster Recovery](database_admin/sre/runbooks/disaster_recovery.md) - major failure recovery; <60 min target (Tier-1)
 
-- SLO/RTO/RPO context
-- Safety gates and approvals
-- Verification criteria and stop conditions
+### Operational Procedures
+
+- [Change Management & Release](database_admin/sre/runbooks/change-management-and-release.md) - safe schema/config changes with risk gates
+- [Backup Verification & Restore Drill](database_admin/sre/runbooks/backup-verification-and-restore-drill.md) - prove RTO/RPO; monthly cadence
+- [Symptom-Driven Troubleshooting Decision Tree](database_admin/sre/runbooks/symptom-driven-troubleshooting-decision-tree.md) - diagnostic triage by symptom
+
+**Complete runbook index**: [database_admin/sre/runbooks/README.md](database_admin/sre/runbooks/README.md)
+
+### Operating Standards (Cross-Platform)
+
+- [Security & Compliance Operating Standard](database_admin/standards/security-and-compliance-operating-standard.md) - mandatory controls, access, encryption, audit, patch SLAs
+- [Capacity & FinOps Operating Standard](database_admin/standards/capacity-and-finops-operating-standard.md) - forecasting, optimization, cost governance
+- [Alerting & Monitoring Configuration](database_admin/standards/alerting-and-monitoring-configuration.md) - alert hierarchy, SLO thresholds, operationalization
+
+Minimum reliability controls expected:
+
+- SLO/RTO/RPO context and targets
+- Safety gates and approval requirements
+- Preconditions and risk gates
+- Verification criteria and success conditions
 - Rollback or fallback path
 - Evidence collection for audit and postmortems
-
----
+- Automation opportunities identified
 
 ## Learning and Interview Path
 
