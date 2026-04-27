@@ -88,3 +88,13 @@ The framework and scripts are fully integrated in the repository. Runtime accura
 - required performance views/extensions enabled (for example `pg_stat_statements`)
 
 Use the generated TXT report as the canonical raw diagnostic artifact and HTML for quick triage navigation.
+
+## WSL client installation helper
+If you plan to run the Linux/Bash workflow from WSL, install client tooling after WSL is active:
+
+- Linux installer script:
+	- `database_admin/performance_reports/CPF_Observability/common/install_client_tools_wsl.sh`
+- Windows helper that prints the exact WSL command:
+	- `powershell -ExecutionPolicy Bypass -File database_admin\\performance_reports\\CPF_Observability\\common\\install_client_tools_wsl.ps1`
+
+The installer covers practical packages such as `mysql`, `psql`, `sqlcmd`, `redis-cli`, `mongosh`, `clickhouse-client`, `az`, and `cqlsh`. Oracle `sqlplus` and some Cassandra tooling still require manual vendor-specific installation.
