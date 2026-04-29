@@ -1,4 +1,4 @@
-# CPF_Observability - oracle
+﻿# CPF_Observability - oracle
 
 ## Purpose
 Generate AWR-style deep performance diagnostics for **oracle** with default **30-minute snapshots** and **7-day retention**.
@@ -41,15 +41,38 @@ Edit `config/default.env`:
 - Generic keys: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - Engine-specific keys are also available for MySQL, PostgreSQL, SQL Server, Oracle, Redis, MongoDB, ClickHouse, Cassandra, and Cosmos DB.
 
-## AWR-Style Sections Produced
-The TXT/HTML report includes as much detail as available for the engine and permissions:
-- Instance identity and version
-- Uptime, connection pressure, and throughput counters
-- Wait/resource pressure and IO/cache indicators
-- Top workload statements and heavy operations
-- Blocking/deadlock or lock contention signals
-- Replication/cluster indicators where applicable
-- Additional engine diagnostics (for example, InnoDB status, wait stats, active operations)
+## AWR-Style Sections Produced (22 sections)
+The Oracle report targets Oracle Standard Edition-compatible dynamic views and keeps the same diagnostic style as SQL Server/MySQL reports.
+
+### Engine-Specific Requirements
+- Client tools: sqlplus
+- Recommended privileges: SELECT_CATALOG_ROLE or explicit grants to V$/DBA_ views used in sections
+- Oracle Standard Edition note: sections intentionally avoid Enterprise AWR pack dependencies
+
+| # | Section | AWR / ASH Analogue |
+|---|---------|-------------------|
+| 1 | Instance Identity and Version | DB/instance identity |
+| 2 | Initialization Parameters (Key) | Parameter baseline |
+| 3 | Database Inventory and Size | Segment footprint |
+| 4 | Connection Pressure and Session Mix | Session pressure profile |
+| 5 | Workload Throughput Counters | Load profile |
+| 6 | Memory (SGA/PGA) Health | Memory advisory posture |
+| 7 | Wait Events (Top) | Top wait events |
+| 8 | Wait Class Profile | Wait-class pressure |
+| 9 | Active Sessions (ASH Analogue) | Active session sample |
+| 10 | Blocking Chains and Locks | Blocking diagnostics |
+| 11 | Long Operations | Long-running operation visibility |
+| 12 | Top SQL by Elapsed Time | Top SQL elapsed |
+| 13 | Top SQL by CPU Time | Top SQL CPU |
+| 14 | Top SQL by Buffer Gets | Logical read-heavy SQL |
+| 15 | Top SQL by Disk Reads | Physical read-heavy SQL |
+| 16 | Cursor and Parse Pressure | Parse efficiency |
+| 17 | Redo and Archive Pressure | Redo/archivelog pressure |
+| 18 | Undo and Transaction Health | Undo pressure |
+| 19 | Datafile IO Latency | File IO stall analogue |
+| 20 | Tablespace Utilization | Space pressure |
+| 21 | Top Segments by Size | Segment growth hotspots |
+| 22 | Invalid Objects and Object Churn | Object health |
 
 ## Troubleshooting
 - `No such file or directory` on Linux script execution:
@@ -68,3 +91,4 @@ Run these before one-off or scheduled execution to confirm required client tools
 - Windows: `powershell -ExecutionPolicy Bypass -File scripts/validate_environment.ps1`
 
 The validator prints a pass/fail matrix by engine with notes for missing tools or connectivity failures.
+

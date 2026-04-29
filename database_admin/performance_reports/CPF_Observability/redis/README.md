@@ -1,4 +1,4 @@
-# CPF_Observability - redis
+﻿# CPF_Observability - redis
 
 ## Purpose
 Generate AWR-style deep performance diagnostics for **redis** with default **30-minute snapshots** and **7-day retention**.
@@ -41,15 +41,14 @@ Edit `config/default.env`:
 - Generic keys: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - Engine-specific keys are also available for MySQL, PostgreSQL, SQL Server, Oracle, Redis, MongoDB, ClickHouse, Cassandra, and Cosmos DB.
 
-## AWR-Style Sections Produced
-The TXT/HTML report includes as much detail as available for the engine and permissions:
-- Instance identity and version
-- Uptime, connection pressure, and throughput counters
-- Wait/resource pressure and IO/cache indicators
-- Top workload statements and heavy operations
-- Blocking/deadlock or lock contention signals
-- Replication/cluster indicators where applicable
-- Additional engine diagnostics (for example, InnoDB status, wait stats, active operations)
+## AWR-Style Sections Produced (8 sections)
+The Redis report uses native INFO/SLOWLOG/LATENCY diagnostics and renders them in the same structured HTML style with findings and section summaries.
+
+### Engine-Specific Requirements
+- Client tools: edis-cli
+- Required access: ability to run INFO, SLOWLOG GET, and LATENCY DOCTOR
+
+Sections: Server/Memory overview, memory metrics, command stats, client pressure, persistence posture, replication state, slowlog entries, and latency diagnostics.
 
 ## Troubleshooting
 - `No such file or directory` on Linux script execution:
@@ -68,3 +67,4 @@ Run these before one-off or scheduled execution to confirm required client tools
 - Windows: `powershell -ExecutionPolicy Bypass -File scripts/validate_environment.ps1`
 
 The validator prints a pass/fail matrix by engine with notes for missing tools or connectivity failures.
+

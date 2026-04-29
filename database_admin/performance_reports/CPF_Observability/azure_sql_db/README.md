@@ -1,4 +1,4 @@
-# CPF_Observability - azure_sql_db
+﻿# CPF_Observability - azure_sql_db
 
 ## Purpose
 Generate AWR-style deep performance diagnostics for **azure_sql_db** with default **30-minute snapshots** and **7-day retention**.
@@ -41,15 +41,14 @@ Edit `config/default.env`:
 - Generic keys: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - Engine-specific keys are also available for MySQL, PostgreSQL, SQL Server, Oracle, Redis, MongoDB, ClickHouse, Cassandra, and Cosmos DB.
 
-## AWR-Style Sections Produced
-The TXT/HTML report includes as much detail as available for the engine and permissions:
-- Instance identity and version
-- Uptime, connection pressure, and throughput counters
-- Wait/resource pressure and IO/cache indicators
-- Top workload statements and heavy operations
-- Blocking/deadlock or lock contention signals
-- Replication/cluster indicators where applicable
-- Additional engine diagnostics (for example, InnoDB status, wait stats, active operations)
+## AWR-Style Sections Produced (24 sections)
+Azure SQL DB uses the same SQL Server deep collector profile and report style, with section availability depending on Azure SQL DMV exposure.
+
+### Engine-Specific Requirements
+- Client tools: sqlcmd
+- Required access: rights to query SQL DMVs used by waits, active requests, memory, IO, and top SQL sections
+
+The section map follows SQL Server: identity/configuration, waits, active requests (ASH analogue), blocking, temp/log/IO pressure, top SQL dimensions, cache/index signals, and availability diagnostics where exposed.
 
 ## Troubleshooting
 - `No such file or directory` on Linux script execution:
@@ -68,3 +67,4 @@ Run these before one-off or scheduled execution to confirm required client tools
 - Windows: `powershell -ExecutionPolicy Bypass -File scripts/validate_environment.ps1`
 
 The validator prints a pass/fail matrix by engine with notes for missing tools or connectivity failures.
+

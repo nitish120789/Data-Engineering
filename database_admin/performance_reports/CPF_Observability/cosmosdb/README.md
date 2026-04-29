@@ -1,4 +1,4 @@
-# CPF_Observability - cosmosdb
+﻿# CPF_Observability - cosmosdb
 
 ## Purpose
 Generate AWR-style deep performance diagnostics for **cosmosdb** with default **30-minute snapshots** and **7-day retention**.
@@ -41,15 +41,14 @@ Edit `config/default.env`:
 - Generic keys: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - Engine-specific keys are also available for MySQL, PostgreSQL, SQL Server, Oracle, Redis, MongoDB, ClickHouse, Cassandra, and Cosmos DB.
 
-## AWR-Style Sections Produced
-The TXT/HTML report includes as much detail as available for the engine and permissions:
-- Instance identity and version
-- Uptime, connection pressure, and throughput counters
-- Wait/resource pressure and IO/cache indicators
-- Top workload statements and heavy operations
-- Blocking/deadlock or lock contention signals
-- Replication/cluster indicators where applicable
-- Additional engine diagnostics (for example, InnoDB status, wait stats, active operations)
+## AWR-Style Sections Produced (7 sections)
+The Cosmos DB report relies on Azure Monitor and account metadata to provide RU consumption, latency, and availability diagnostics.
+
+### Engine-Specific Requirements
+- Client tools: z
+- Required access: read permissions on Cosmos account and Azure Monitor metrics for the target resource
+
+Sections: account details, total RUs, normalized RU consumption, data usage, index usage, server-side latency, and availability.
 
 ## Troubleshooting
 - `No such file or directory` on Linux script execution:
@@ -68,3 +67,4 @@ Run these before one-off or scheduled execution to confirm required client tools
 - Windows: `powershell -ExecutionPolicy Bypass -File scripts/validate_environment.ps1`
 
 The validator prints a pass/fail matrix by engine with notes for missing tools or connectivity failures.
+

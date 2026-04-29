@@ -1,4 +1,4 @@
-# CPF_Observability - aurora_mysql
+﻿# CPF_Observability - aurora_mysql
 
 ## Purpose
 Generate AWR-style deep performance diagnostics for **aurora_mysql** with default **30-minute snapshots** and **7-day retention**.
@@ -41,15 +41,14 @@ Edit `config/default.env`:
 - Generic keys: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - Engine-specific keys are also available for MySQL, PostgreSQL, SQL Server, Oracle, Redis, MongoDB, ClickHouse, Cassandra, and Cosmos DB.
 
-## AWR-Style Sections Produced
-The TXT/HTML report includes as much detail as available for the engine and permissions:
-- Instance identity and version
-- Uptime, connection pressure, and throughput counters
-- Wait/resource pressure and IO/cache indicators
-- Top workload statements and heavy operations
-- Blocking/deadlock or lock contention signals
-- Replication/cluster indicators where applicable
-- Additional engine diagnostics (for example, InnoDB status, wait stats, active operations)
+## AWR-Style Sections Produced (25 sections)
+Aurora MySQL inherits the full MySQL deep collector (25 sections) and renders the same structured AWR-style report.
+
+### Engine-Specific Requirements
+- Client tools: mysql (or managed .NET fallback on Windows where enabled)
+- Required access: performance_schema and information_schema access for statement/wait/lock diagnostics
+
+The section map is identical to the MySQL README and includes identity/configuration, throughput, InnoDB pressure, ASH analogue, lock chains, top SQL dimensions, IO latency, and replication/binlog posture.
 
 ## Troubleshooting
 - `No such file or directory` on Linux script execution:
@@ -68,3 +67,4 @@ Run these before one-off or scheduled execution to confirm required client tools
 - Windows: `powershell -ExecutionPolicy Bypass -File scripts/validate_environment.ps1`
 
 The validator prints a pass/fail matrix by engine with notes for missing tools or connectivity failures.
+

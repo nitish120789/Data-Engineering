@@ -64,6 +64,14 @@ def build_findings(report_text: str) -> tuple[list[str], str]:
                 findings.append("Full-table scan or no-index-used signals present; review query plans and index coverage.")
         if "slave_sql_running" in lower or "replica_sql_running" in lower:
                 findings.append("Replication data is present; validate replica lag and IO/SQL thread state.")
+        if "wal_buffers_full" in lower or "checkpoints_req" in lower:
+                findings.append("PostgreSQL WAL/checkpoint pressure signals detected; review checkpoint cadence and write bursts.")
+        if "n_dead_tup" in lower or "autovacuum" in lower:
+                findings.append("Table bloat or autovacuum pressure may be present; inspect dead tuples and vacuum throughput.")
+        if "aggregate pga" in lower or "over allocation count" in lower:
+                findings.append("Oracle PGA pressure indicators detected; validate memory targets and workarea policy.")
+        if "tablespace" in lower and "used_percent" in lower:
+                findings.append("Tablespace utilization data present; review high used-percent tablespaces for capacity risk.")
 
         if not findings:
                 findings.append("No explicit high-risk indicators were auto-detected; validate against workload SLO baselines.")
@@ -160,11 +168,23 @@ def render_html(engine: str, report_text: str, sections: list[tuple[str, str]]) 
                 if "innodb io" in lower_title or "log pressure" in lower_title:
                         return "InnoDB IO, redo log, and page operation pressure indicators."
                 if "statement wait" in lower_title:
-                        return "Performance Schema wait events sorted by cumulative wait time — analogous to AWR Top Wait Events."
+                        return "Performance Schema wait events sorted by cumulative wait time - analogous to AWR Top Wait Events."
                 if "lock wait" in lower_title or "transaction" in lower_title:
                         return "Concurrency diagnostics: InnoDB lock waits, deadlocks, and long-running transactions."
                 if "table io" in lower_title:
-                        return "Per-table read/write latency — analogous to AWR Segment IO statistics."
+                        return "Per-table read/write latency - analogous to AWR Segment IO statistics."
+                if "wal" in lower_title or "checkpoint" in lower_title:
+                        return "WAL generation and checkpoint behavior indicating write pressure and durability cadence."
+                if "vacuum" in lower_title or "analyze" in lower_title:
+                        return "Autovacuum and statistics maintenance posture for bloat and planner stability."
+                if "slot health" in lower_title:
+                        return "Replication slot and stream health, including lag and retention risk indicators."
+                if "sga" in lower_title or "pga" in lower_title:
+                        return "Oracle memory pool sizing and pressure indicators across SGA/PGA components."
+                if "tablespace" in lower_title:
+                        return "Tablespace usage posture and free-space pressure hotspots."
+                if "undo" in lower_title:
+                        return "Undo retention pressure and transaction rollback segment health signals."
                 if "user and host" in lower_title or "session mix" in lower_title:
                         return "User/host session distribution and activity breakdown."
                 if "schema" in lower_title or "inventory" in lower_title:

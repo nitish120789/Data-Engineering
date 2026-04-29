@@ -1,4 +1,4 @@
-# CPF_Observability - postgresql
+﻿# CPF_Observability - postgresql
 
 ## Purpose
 Generate AWR-style deep performance diagnostics for **postgresql** with default **30-minute snapshots** and **7-day retention**.
@@ -41,15 +41,38 @@ Edit `config/default.env`:
 - Generic keys: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - Engine-specific keys are also available for MySQL, PostgreSQL, SQL Server, Oracle, Redis, MongoDB, ClickHouse, Cassandra, and Cosmos DB.
 
-## AWR-Style Sections Produced
-The TXT/HTML report includes as much detail as available for the engine and permissions:
-- Instance identity and version
-- Uptime, connection pressure, and throughput counters
-- Wait/resource pressure and IO/cache indicators
-- Top workload statements and heavy operations
-- Blocking/deadlock or lock contention signals
-- Replication/cluster indicators where applicable
-- Additional engine diagnostics (for example, InnoDB status, wait stats, active operations)
+## AWR-Style Sections Produced (22 sections)
+The PostgreSQL report is structured in the same AWR-style layout used by SQL Server/MySQL: identity, configuration, pressure indicators, active workload, top SQL dimensions, contention, storage, and replication posture.
+
+### Engine-Specific Requirements
+- Client tools: psql
+- Recommended privileges: pg_read_all_stats, access to pg_stat_statements, pg_stat_replication, and pg_replication_slots
+- Recommended extension: pg_stat_statements
+
+| # | Section | AWR / ASH Analogue |
+|---|---------|-------------------|
+| 1 | Instance Identity and Version | DB instance identity |
+| 2 | Server Configuration Key Parameters | Parameter baseline |
+| 3 | Database Inventory and Size | Tablespace/database footprint |
+| 4 | Connection Pressure and Session Mix | Session pressure profile |
+| 5 | Workload Throughput and Transaction Counters | Load profile |
+| 6 | Temporary Objects and Sort Pressure | Temp spill pressure |
+| 7 | Buffer Cache and IO Hit Ratios | Buffer cache efficiency |
+| 8 | WAL and Checkpoint Pressure | Redo/checkpoint health |
+| 9 | Wait Event Profile | Top wait classes/events |
+| 10 | Active Sessions (ASH Analogue) | In-flight sessions and waits |
+| 11 | Blocking Chains | Blocking tree diagnostics |
+| 12 | Long-Running Transactions | Transaction age pressure |
+| 13 | Top SQL by Total Time | Top SQL elapsed |
+| 14 | Top SQL by Execution Count | Top SQL by calls |
+| 15 | Top SQL by Shared Block Reads | Read-heavy SQL |
+| 16 | Top SQL by Temp Blocks | Temp-heavy SQL |
+| 17 | Table IO and Heap/Index Access | Segment IO analogue |
+| 18 | Index Usage and Bloat Indicators | Index efficiency signals |
+| 19 | Vacuum and Analyze Health | Maintenance health |
+| 20 | Lock Inventory and Contention | Locking pressure |
+| 21 | Replication and Slot Health | Replica/slot lag posture |
+| 22 | (Section availability dependent on privileges/extensions) | Collection coverage signal |
 
 ## Troubleshooting
 - `No such file or directory` on Linux script execution:
@@ -68,3 +91,4 @@ Run these before one-off or scheduled execution to confirm required client tools
 - Windows: `powershell -ExecutionPolicy Bypass -File scripts/validate_environment.ps1`
 
 The validator prints a pass/fail matrix by engine with notes for missing tools or connectivity failures.
+
