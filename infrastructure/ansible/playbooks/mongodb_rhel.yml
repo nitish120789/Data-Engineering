@@ -1,0 +1,7 @@
+- name: Install and configure MongoDB on RHEL
+  hosts: mongodb
+  become: true
+  gather_facts: true
+  roles:
+    - common_rhel
+    - mongodb

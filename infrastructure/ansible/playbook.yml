@@ -1,14 +1,1 @@
-- name: Setup PostgreSQL
-  hosts: db
-  become: yes
-
-  tasks:
-    - name: Install PostgreSQL
-      apt:
-        name: postgresql
-        state: present
-
-    - name: Start PostgreSQL
-      service:
-        name: postgresql
-        state: started
+- import_playbook: playbooks/site.yml

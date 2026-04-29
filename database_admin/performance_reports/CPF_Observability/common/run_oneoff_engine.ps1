@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [string]$Engine,
 
@@ -103,6 +103,153 @@ function Invoke-SqlServerQuery {
     & sqlcmd @args
 }
 
+function Invoke-MySqlQuery {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ServerHost,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Port,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Database,
+
+        [string]$Username,
+
+        [string]$Password,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Query
+    )
+
+    $mysqlCmd = Get-Command mysql -ErrorAction SilentlyContinue
+    if ($mysqlCmd) {
+        $prevPwd = [System.Environment]::GetEnvironmentVariable('MYSQL_PWD', 'Process')
+        if ($Password) {
+            [System.Environment]::SetEnvironmentVariable('MYSQL_PWD', $Password, 'Process')
+        }
+
+        try {
+            $cmdArgs = @('-h', $ServerHost, '-P', $Port, '--connect-timeout=5', '--table', '--column-names', '-e', $Query)
+            if ($Username) { $cmdArgs += @('-u', $Username) }
+            if ($Database) { $cmdArgs += @('-D', $Database) }
+
+            & mysql @cmdArgs
+            return
+        }
+        finally {
+            if ($prevPwd) {
+                [System.Environment]::SetEnvironmentVariable('MYSQL_PWD', $prevPwd, 'Process')
+            }
+            else {
+                [System.Environment]::SetEnvironmentVariable('MYSQL_PWD', $null, 'Process')
+            }
+        }
+    }
+
+    # Fallback path when mysql.exe is not installed on the host.
+    $managedReadyVar = Get-Variable -Name MySqlManagedReady -Scope Script -ErrorAction SilentlyContinue
+    if (-not $managedReadyVar -or -not [bool]$managedReadyVar.Value) {
+        $pkgRoot = Join-Path $env:TEMP 'cpf_mysql_managed'
+        New-Item -ItemType Directory -Path $pkgRoot -Force | Out-Null
+
+        $packages = @(
+            @{ Name = 'MySql.Data'; Version = '8.0.33' },
+            @{ Name = 'System.Threading.Tasks.Extensions'; Version = '4.5.4' },
+            @{ Name = 'System.Memory'; Version = '4.5.4' },
+            @{ Name = 'System.Buffers'; Version = '4.5.1' },
+            @{ Name = 'System.Runtime.CompilerServices.Unsafe'; Version = '4.5.3' }
+        )
+
+        foreach ($pkg in $packages) {
+            $name = $pkg.Name
+            $version = $pkg.Version
+            $nupkg = Join-Path $pkgRoot ("{0}.{1}.nupkg" -f $name, $version)
+            $zip = Join-Path $pkgRoot ("{0}.{1}.zip" -f $name, $version)
+            $outDir = Join-Path $pkgRoot ("{0}.{1}" -f $name, $version)
+            if (-not (Test-Path $outDir)) {
+                if (-not (Test-Path $nupkg)) {
+                    $url = "https://www.nuget.org/api/v2/package/{0}/{1}" -f $name, $version
+                    Invoke-WebRequest -Uri $url -OutFile $nupkg -UseBasicParsing
+                }
+                Copy-Item $nupkg $zip -Force
+                Expand-Archive -Path $zip -DestinationPath $outDir -Force
+            }
+        }
+
+        $deps = @(
+            (Join-Path $pkgRoot 'System.Runtime.CompilerServices.Unsafe.4.5.3\lib\net461\System.Runtime.CompilerServices.Unsafe.dll'),
+            (Join-Path $pkgRoot 'System.Buffers.4.5.1\lib\net461\System.Buffers.dll'),
+            (Join-Path $pkgRoot 'System.Memory.4.5.4\lib\net461\System.Memory.dll'),
+            (Join-Path $pkgRoot 'System.Threading.Tasks.Extensions.4.5.4\lib\net461\System.Threading.Tasks.Extensions.dll')
+        )
+        foreach ($dep in $deps) {
+            if (Test-Path $dep) {
+                try { [System.Reflection.Assembly]::LoadFrom($dep) | Out-Null } catch { }
+            }
+        }
+
+        $mysqlDll = Join-Path $pkgRoot 'MySql.Data.8.0.33\lib\net462\MySql.Data.dll'
+        try {
+            Add-Type -Path $mysqlDll -ErrorAction Stop
+        }
+        catch {
+            if (-not ('MySql.Data.MySqlClient.MySqlConnection' -as [type])) {
+                throw
+            }
+        }
+        $script:MySqlManagedReady = $true
+    }
+
+    $csb = New-Object System.Text.StringBuilder
+    [void]$csb.Append("Server=$ServerHost;")
+    [void]$csb.Append("Port=$Port;")
+    if ($Database) { [void]$csb.Append("Database=$Database;") }
+    if ($Username) { [void]$csb.Append("Uid=$Username;") }
+    if ($Password) { [void]$csb.Append("Pwd=$Password;") }
+    [void]$csb.Append('Connection Timeout=8;Default Command Timeout=120;SslMode=None;')
+
+    $conn = New-Object MySql.Data.MySqlClient.MySqlConnection($csb.ToString())
+    $conn.Open()
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = $Query
+        $reader = $cmd.ExecuteReader()
+        $output = New-Object System.Collections.Generic.List[string]
+        do {
+            if ($reader.FieldCount -le 0) { continue }
+
+            $headers = @()
+            for ($i = 0; $i -lt $reader.FieldCount; $i++) {
+                $headers += $reader.GetName($i)
+            }
+            $output.Add(($headers -join ' | '))
+            $output.Add((@($headers | ForEach-Object { '---' }) -join ' | '))
+
+            $rowCount = 0
+            while ($reader.Read()) {
+                $row = @()
+                for ($i = 0; $i -lt $reader.FieldCount; $i++) {
+                    if ($reader.IsDBNull($i)) { $row += 'NULL' }
+                    else {
+                        $v = $reader.GetValue($i).ToString().Replace("`r", ' ').Replace("`n", ' ')
+                        $row += $v
+                    }
+                }
+                $output.Add(($row -join ' | '))
+                $rowCount++
+            }
+            if ($rowCount -eq 0) { $output.Add('(no rows)') }
+            $output.Add('')
+        } while ($reader.NextResult())
+
+        return ($output -join [Environment]::NewLine)
+    }
+    finally {
+        $conn.Close()
+    }
+}
+
 function Convert-ReportTextToHtml {
     param(
         [Parameter(Mandatory = $true)]
@@ -180,14 +327,24 @@ function Convert-ReportTextToHtml {
 
         $lowerTitle = $Title.ToLowerInvariant()
         $lowerContent = $Content.ToLowerInvariant()
-        if ($lowerTitle.Contains('wait')) { return 'Primary wait pressure across tasks, categories, and active chains.' }
-        if ($lowerTitle.Contains('ash') -or $lowerTitle.Contains('active requests')) { return 'Current workload sample showing in-flight statements, waits, and session state.' }
+        if ($lowerTitle.Contains('wait') -and -not $lowerTitle.Contains('lock wait')) { return 'Primary wait pressure across tasks, categories, and active chains.' }
+        if ($lowerTitle.Contains('statement wait')) { return 'Performance Schema wait events sorted by cumulative wait time â€” analogous to AWR Top Wait Events.' }
+        if ($lowerTitle.Contains('ash') -or $lowerTitle.Contains('active sessions') -or $lowerTitle.Contains('active requests')) { return 'Current workload sample showing in-flight statements, waits, and session state.' }
         if ($lowerTitle.Contains('cpu') -or $lowerTitle.Contains('duration') -or $lowerTitle.Contains('read and write')) { return 'High-cost statements ranked by resource consumption and elapsed impact.' }
-        if ($lowerTitle.Contains('blocking') -or $lowerTitle.Contains('deadlock')) { return 'Concurrency diagnostics for blockers, victims, and transaction contention.' }
+        if ($lowerTitle.Contains('rows examined') -or $lowerTitle.Contains('execution count') -or $lowerTitle.Contains('temp disk') -or $lowerTitle.Contains('errors')) { return 'High-cost SQL ranked by a secondary resource or error dimension.' }
+        if ($lowerTitle.Contains('lock wait') -or $lowerTitle.Contains('blocking') -or $lowerTitle.Contains('deadlock') -or $lowerTitle.Contains('transaction')) { return 'Concurrency diagnostics: lock waits, deadlocks, blocking chains, and open transactions.' }
+        if ($lowerTitle.Contains('buffer pool')) { return 'InnoDB buffer pool utilization, hit ratio, and dirty page pressure.' }
+        if ($lowerTitle.Contains('innodb io') -or $lowerTitle.Contains('log pressure')) { return 'InnoDB IO, redo log, and page operation pressure indicators.' }
         if ($lowerTitle.Contains('memory') -or $lowerTitle.Contains('tempdb')) { return 'Memory grant, buffer, and workspace pressure indicators.' }
+        if ($lowerTitle.Contains('table io')) { return 'Per-table read/write latency â€” analogous to AWR Segment IO statistics.' }
         if ($lowerTitle.Contains('io') -or $lowerTitle.Contains('log')) { return 'Storage latency, file pressure, and recovery/log utilization signals.' }
-        if ($lowerTitle.Contains('replica') -or $lowerTitle.Contains('alwayson')) { return 'Availability group synchronization and replica health status.' }
+        if ($lowerTitle.Contains('replication') -or $lowerTitle.Contains('replica') -or $lowerTitle.Contains('alwayson')) { return 'Replication/availability synchronization and replica health status.' }
+        if ($lowerTitle.Contains('binary log')) { return 'Binary log status, GTID state, and log file inventory.' }
         if ($lowerTitle.Contains('query store')) { return 'Plan/runtime history useful for regression and outlier detection.' }
+        if ($lowerTitle.Contains('throughput') -or $lowerTitle.Contains('workload')) { return 'Aggregate workload throughput counters since last restart.' }
+        if ($lowerTitle.Contains('schema') -or $lowerTitle.Contains('inventory')) { return 'Object inventory, sizing, and storage allocation.' }
+        if ($lowerTitle.Contains('user') -or $lowerTitle.Contains('host activity') -or $lowerTitle.Contains('session mix')) { return 'User/host session distribution and activity breakdown.' }
+        if ($lowerTitle.Contains('configuration') -or $lowerTitle.Contains('server config')) { return 'Key server configuration parameters affecting performance and durability.' }
         if ($lowerContent.Contains('section unavailable')) { return 'This section could not be collected on the target due to permissions or feature availability.' }
         return 'Detailed engine telemetry captured for this diagnostic slice.'
     }
@@ -198,6 +355,11 @@ function Convert-ReportTextToHtml {
     $lowerReport = $ReportText.ToLowerInvariant()
     if ($lowerReport.Contains('section unavailable')) { $findings.Add('Some sections were unavailable due to privileges, feature flags, or engine/version differences.') }
     if ($lowerReport.Contains('deadlock')) { $findings.Add('Deadlock signals were detected; review lock chains and top contending statements.') }
+    if ($lowerReport.Contains('innodb_deadlocks') -or $lowerReport.Contains('innodb_row_lock_waits')) { $findings.Add('InnoDB deadlock or row lock wait pressure detected; investigate lock order and transaction scope.') }
+    if ($lowerReport.Contains('created_tmp_disk_tables')) { $findings.Add('Temporary disk table usage detected; consider raising tmp_table_size/max_heap_table_size.') }
+    if ($lowerReport.Contains('innodb_log_waits')) { $findings.Add('InnoDB log wait pressure present; consider increasing innodb_log_buffer_size.') }
+    if ($lowerReport.Contains('select_full_join') -or $lowerReport.Contains('no_index_used')) { $findings.Add('Full-table scan or no-index-used signals present; review query plans and index coverage.') }
+    if ($lowerReport.Contains('replication') -or $lowerReport.Contains('replica')) { $findings.Add('Replication data present; validate replica lag and IO/SQL thread state.') }
     if ($lowerReport.Contains('blocking_session_id') -or $lowerReport.Contains('head blocker')) { $findings.Add('Blocking chain data is present; check head blockers, transaction scope, and lock duration.') }
     if ($lowerReport.Contains('memory grants pending') -or $lowerReport.Contains('resource_semaphore')) { $findings.Add('Memory grant pressure indicators are present; inspect grant queues and large query concurrency.') }
     if ($lowerReport.Contains('pageiolatch') -or $lowerReport.Contains('writelog') -or $lowerReport.Contains('io/log')) { $findings.Add('IO or log-write pressure indicators are present; correlate file latency with top read/write statements.') }
@@ -385,14 +547,56 @@ Write-Log "Running one-off snapshot at $timestamp"
 Write-Log "Target: $target"
 
 switch ($Engine) {
-    'mysql' { 
-        $dbUser = if ($dbUser) { $dbUser } else { 'root' }
-        $dbName = if ($dbName) { $dbName } else { 'performance_schema' }
+    'mysql' {
+        # Engine-specific vars take priority; DB_HOST/DB_PORT/DB_USER/DB_PASSWORD are generic fallbacks
+        $mysqlSpecHost = [System.Environment]::GetEnvironmentVariable('MYSQL_HOST', 'Process')
+        if ($mysqlSpecHost) { $dbHost = $mysqlSpecHost }
+        elseif (-not $dbHost -or $dbHost -eq '127.0.0.1') {
+            $genericHost = [System.Environment]::GetEnvironmentVariable('DB_HOST', 'Process')
+            if ($genericHost) { $dbHost = $genericHost } else { $dbHost = '127.0.0.1' }
+        }
 
-        Add-Section 'Instance Identity and Version' { mysql -h $dbHost -P $dbPort -u $dbUser -D $dbName --table -e "SELECT NOW() AS collected_at_utc, @@hostname AS hostname, @@port AS port, @@version AS version, @@version_comment AS flavor, @@read_only AS read_only" }
-        Add-Section 'Uptime and Connection Pressure' { mysql -h $dbHost -P $dbPort -u $dbUser -D $dbName --table -e "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime','Threads_running','Threads_connected','Max_used_connections','Connections','Aborted_connects','Connection_errors_max_connections')" }
-        Add-Section 'Top SQL by Total Time' { mysql -h $dbHost -P $dbPort -u $dbUser -D $dbName --table -e "SELECT DIGEST, LEFT(DIGEST_TEXT, 160) AS sql_text, COUNT_STAR AS exec_count, ROUND(SUM_TIMER_WAIT/1000000000000,3) AS total_s, ROUND(AVG_TIMER_WAIT/1000000000,3) AS avg_ms, SUM_ROWS_EXAMINED AS rows_examined, SUM_NO_INDEX_USED AS no_index_used FROM performance_schema.events_statements_summary_by_digest ORDER BY SUM_TIMER_WAIT DESC LIMIT 20" }
-        Add-Section 'Blocking Chains' { mysql -h $dbHost -P $dbPort -u $dbUser -D $dbName --table -e "SELECT r.trx_id AS waiting_trx_id, b.trx_id AS blocking_trx_id, TIMESTAMPDIFF(SECOND, r.trx_started, NOW()) AS waiting_seconds, LEFT(r.trx_query, 200) AS waiting_query, LEFT(b.trx_query, 200) AS blocking_query FROM information_schema.innodb_lock_waits w JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id ORDER BY waiting_seconds DESC LIMIT 20" }
+        $mysqlSpecPort = [System.Environment]::GetEnvironmentVariable('MYSQL_PORT', 'Process')
+        if ($mysqlSpecPort) { $dbPort = $mysqlSpecPort }
+        elseif (-not $dbPort) { $dbPort = '3306' }
+
+        $mysqlSpecUser = [System.Environment]::GetEnvironmentVariable('MYSQL_USER', 'Process')
+        if ($mysqlSpecUser) { $dbUser = $mysqlSpecUser }
+        elseif (-not $dbUser) { $dbUser = 'root' }
+
+        $mysqlSpecPwd = [System.Environment]::GetEnvironmentVariable('MYSQL_PASSWORD', 'Process')
+        if ($mysqlSpecPwd) { $dbPassword = $mysqlSpecPwd }
+
+        $mysqlSpecDb = [System.Environment]::GetEnvironmentVariable('MYSQL_DATABASE', 'Process')
+        if ($mysqlSpecDb) { $dbName = $mysqlSpecDb }
+        elseif (-not $dbName) { $dbName = 'performance_schema' }
+
+
+        Add-Section 'Instance Identity and Version' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT NOW() AS collected_at_utc, @@hostname AS hostname, @@port AS port, @@version AS version, @@version_comment AS flavor, @@read_only AS read_only, @@global.gtid_mode AS gtid_mode" }
+        Add-Section 'Server Configuration Key Variables' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW GLOBAL VARIABLES WHERE Variable_name IN ('max_connections','max_allowed_packet','innodb_buffer_pool_size','innodb_buffer_pool_instances','innodb_log_file_size','innodb_log_buffer_size','innodb_flush_method','innodb_flush_log_at_trx_commit','sync_binlog','binlog_format','slow_query_log','long_query_time','table_open_cache','thread_cache_size','wait_timeout','interactive_timeout','transaction_isolation','innodb_io_capacity','innodb_io_capacity_max','innodb_read_io_threads','innodb_write_io_threads','innodb_autoinc_lock_mode')" }
+        Add-Section 'Database Inventory and Size' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT table_schema AS db_name, COUNT(*) AS table_count, ROUND(SUM(data_length)/1024/1024,2) AS data_mb, ROUND(SUM(index_length)/1024/1024,2) AS index_mb, ROUND(SUM(data_length+index_length)/1024/1024,2) AS total_mb, ROUND(SUM(data_free)/1024/1024,2) AS free_mb FROM information_schema.tables WHERE table_schema NOT IN ('performance_schema','information_schema','sys','mysql') GROUP BY table_schema ORDER BY total_mb DESC" }
+        Add-Section 'Connection Pressure and Session Mix' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime','Threads_running','Threads_connected','Threads_cached','Max_used_connections','Connections','Aborted_connects','Aborted_clients','Connection_errors_max_connections'); SELECT USER, HOST, DB, COMMAND, COUNT(*) AS cnt FROM information_schema.processlist GROUP BY USER, HOST, DB, COMMAND ORDER BY cnt DESC LIMIT 20" }
+        Add-Section 'Workload Throughput Counters' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW GLOBAL STATUS WHERE Variable_name IN ('Queries','Questions','Com_select','Com_insert','Com_update','Com_delete','Com_replace','Com_commit','Com_rollback','Com_begin','Slow_queries','Handler_read_key','Handler_read_next','Handler_read_rnd','Handler_read_rnd_next','Select_full_join','Select_scan','Select_range')" }
+        Add-Section 'Temporary Objects and Sort Pressure' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW GLOBAL STATUS WHERE Variable_name IN ('Created_tmp_tables','Created_tmp_disk_tables','Created_tmp_files','Sort_rows','Sort_merge_passes','Sort_scan','Sort_range')" }
+        Add-Section 'InnoDB Buffer Pool Health' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_buffer_pool_read_requests','Innodb_buffer_pool_reads','Innodb_buffer_pool_pages_total','Innodb_buffer_pool_pages_free','Innodb_buffer_pool_pages_dirty','Innodb_buffer_pool_wait_free','Innodb_buffer_pool_write_requests','Innodb_buffer_pool_pages_flushed'); SELECT ROUND(100*(1 - SUM(IF(VARIABLE_NAME='Innodb_buffer_pool_reads',VARIABLE_VALUE,0)) / NULLIF(SUM(IF(VARIABLE_NAME='Innodb_buffer_pool_read_requests',VARIABLE_VALUE,0)),0)),4) AS buffer_pool_hit_pct FROM performance_schema.global_status WHERE VARIABLE_NAME IN ('Innodb_buffer_pool_reads','Innodb_buffer_pool_read_requests')" }
+        Add-Section 'InnoDB IO and Log Pressure' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_data_reads','Innodb_data_writes','Innodb_data_fsyncs','Innodb_data_pending_reads','Innodb_data_pending_writes','Innodb_log_waits','Innodb_log_writes','Innodb_log_write_requests','Innodb_os_log_written','Innodb_os_log_fsyncs','Innodb_pages_read','Innodb_pages_written','Innodb_pages_created','Innodb_rows_read','Innodb_rows_inserted','Innodb_rows_updated','Innodb_rows_deleted')" }
+        Add-Section 'Statement Wait Events' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT EVENT_NAME, COUNT_STAR AS wait_count, ROUND(SUM_TIMER_WAIT/1000000000000,3) AS total_wait_s, ROUND(AVG_TIMER_WAIT/1000000000,3) AS avg_wait_ms, ROUND(MAX_TIMER_WAIT/1000000000,3) AS max_wait_ms FROM performance_schema.events_waits_summary_global_by_event_name WHERE COUNT_STAR > 0 AND EVENT_NAME NOT LIKE '%idle%' ORDER BY SUM_TIMER_WAIT DESC LIMIT 30" }
+        Add-Section 'Lock Wait and Deadlock Counters' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_row_lock_current_waits','Innodb_row_lock_waits','Innodb_row_lock_time','Innodb_row_lock_time_avg','Innodb_row_lock_time_max','Innodb_deadlocks','Table_locks_waited','Table_locks_immediate')" }
+        Add-Section 'Active Sessions (ASH Analogue)' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT ID, USER, HOST, DB, COMMAND, TIME, STATE, LEFT(INFO, 320) AS SQL_TEXT FROM information_schema.processlist WHERE COMMAND <> 'Sleep' ORDER BY TIME DESC LIMIT 30" }
+        Add-Section 'Active Lock Wait Chains' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT r.trx_id AS waiting_trx_id, b.trx_id AS blocking_trx_id, r.trx_mysql_thread_id AS waiting_thread, b.trx_mysql_thread_id AS blocking_thread, TIMESTAMPDIFF(SECOND, r.trx_started, NOW()) AS waiting_seconds, LEFT(r.trx_query, 240) AS waiting_query, LEFT(b.trx_query, 240) AS blocking_query FROM information_schema.innodb_lock_waits w JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id ORDER BY waiting_seconds DESC LIMIT 20" }
+        Add-Section 'Long-Running Transactions' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT trx_id, trx_mysql_thread_id AS thread_id, trx_state, trx_started, TIMESTAMPDIFF(SECOND, trx_started, NOW()) AS age_seconds, trx_rows_locked, trx_rows_modified, LEFT(trx_query, 240) AS sql_text, trx_operation_state, trx_tables_in_use, trx_tables_locked FROM information_schema.innodb_trx ORDER BY trx_started ASC LIMIT 20" }
+        Add-Section 'Top SQL by Total Time' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT LEFT(DIGEST_TEXT, 240) AS sql_text, SCHEMA_NAME AS db, COUNT_STAR AS exec_count, ROUND(SUM_TIMER_WAIT/1000000000000,3) AS total_s, ROUND(AVG_TIMER_WAIT/1000000000,3) AS avg_ms, ROUND(MAX_TIMER_WAIT/1000000000,3) AS max_ms, SUM_ROWS_EXAMINED AS rows_examined, SUM_NO_INDEX_USED AS no_index_used FROM performance_schema.events_statements_summary_by_digest ORDER BY SUM_TIMER_WAIT DESC LIMIT 25" }
+        Add-Section 'Top SQL by Execution Count' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT LEFT(DIGEST_TEXT, 240) AS sql_text, SCHEMA_NAME AS db, COUNT_STAR AS exec_count, ROUND(AVG_TIMER_WAIT/1000000000,3) AS avg_ms, SUM_ROWS_EXAMINED AS total_rows_examined, SUM_NO_INDEX_USED AS no_index_used FROM performance_schema.events_statements_summary_by_digest ORDER BY COUNT_STAR DESC LIMIT 25" }
+        Add-Section 'Top SQL by Rows Examined' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT LEFT(DIGEST_TEXT, 240) AS sql_text, SCHEMA_NAME AS db, COUNT_STAR AS exec_count, SUM_ROWS_EXAMINED AS total_rows_examined, ROUND(SUM_ROWS_EXAMINED/NULLIF(COUNT_STAR,0),0) AS avg_rows_examined, SUM_NO_INDEX_USED AS no_index_used, ROUND(SUM_TIMER_WAIT/1000000000000,3) AS total_s FROM performance_schema.events_statements_summary_by_digest ORDER BY SUM_ROWS_EXAMINED DESC LIMIT 25" }
+        Add-Section 'Top SQL by Temp Disk Tables' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT LEFT(DIGEST_TEXT, 240) AS sql_text, SCHEMA_NAME AS db, COUNT_STAR AS exec_count, SUM_CREATED_TMP_DISK_TABLES AS tmp_disk_tables, SUM_CREATED_TMP_TABLES AS tmp_tables, ROUND(SUM_TIMER_WAIT/1000000000000,3) AS total_s, SUM_SORT_MERGE_PASSES AS sort_merge_passes FROM performance_schema.events_statements_summary_by_digest ORDER BY SUM_CREATED_TMP_DISK_TABLES DESC LIMIT 20" }
+        Add-Section 'Top SQL by Errors and Warnings' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT LEFT(DIGEST_TEXT, 240) AS sql_text, SCHEMA_NAME AS db, COUNT_STAR AS exec_count, SUM_ERRORS AS total_errors, SUM_WARNINGS AS total_warnings, SUM_ROWS_EXAMINED AS rows_examined FROM performance_schema.events_statements_summary_by_digest WHERE SUM_ERRORS > 0 OR SUM_WARNINGS > 0 ORDER BY SUM_ERRORS DESC, SUM_WARNINGS DESC LIMIT 20" }
+        Add-Section 'Table IO Latency' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT OBJECT_SCHEMA AS db, OBJECT_NAME AS table_name, COUNT_READ, COUNT_WRITE, COUNT_FETCH, COUNT_INSERT, COUNT_UPDATE, COUNT_DELETE, ROUND(SUM_TIMER_READ/1000000000000,3) AS total_read_s, ROUND(SUM_TIMER_WRITE/1000000000000,3) AS total_write_s FROM performance_schema.table_io_waits_summary_by_table WHERE OBJECT_SCHEMA NOT IN ('performance_schema','information_schema','sys','mysql') AND (COUNT_READ + COUNT_WRITE) > 0 ORDER BY (SUM_TIMER_READ + SUM_TIMER_WRITE) DESC LIMIT 30" }
+        Add-Section 'User and Host Activity Summary' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT USER, HOST, DB, SUM(CASE WHEN COMMAND='Query' THEN 1 ELSE 0 END) AS active_queries, SUM(CASE WHEN COMMAND='Sleep' THEN 1 ELSE 0 END) AS idle_sessions, COUNT(*) AS total_sessions, MAX(TIME) AS max_query_time_s FROM information_schema.processlist GROUP BY USER, HOST, DB ORDER BY total_sessions DESC, active_queries DESC LIMIT 20" }
+        Add-Section 'Schema Size and Top Tables' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SELECT table_schema AS db, table_name, engine, table_rows, ROUND(data_length/1024/1024,2) AS data_mb, ROUND(index_length/1024/1024,2) AS index_mb, ROUND((data_length+index_length)/1024/1024,2) AS total_mb, ROUND(data_free/1024/1024,2) AS free_mb FROM information_schema.tables WHERE table_schema NOT IN ('performance_schema','information_schema','sys','mysql') ORDER BY (data_length+index_length) DESC LIMIT 30" }
+        Add-Section 'Binary Log and GTID Status' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW MASTER STATUS; SHOW BINARY LOGS" }
+        Add-Section 'Replication Status (MySQL 8+)' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW REPLICA STATUS" }
+        Add-Section 'Replication Status (MySQL 5.7 Legacy)' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW SLAVE STATUS" }
+        Add-Section 'InnoDB Engine Status' { Invoke-MySqlQuery -ServerHost $dbHost -Port $dbPort -Database $dbName -Username $dbUser -Password $dbPassword -Query "SHOW ENGINE INNODB STATUS" }
     }
     'aurora_mysql' { 
         & $PSCommandPath -Engine 'mysql' -EngineRoot $EngineRoot
@@ -495,3 +699,4 @@ else {
 Write-Log "Snapshot written: $snapshotOut"
 Write-Log "Detailed TXT report: $reportTxt"
 Write-Log "Detailed HTML report: $reportHtml"
+

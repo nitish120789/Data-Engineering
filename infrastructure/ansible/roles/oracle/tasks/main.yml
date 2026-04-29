@@ -1,0 +1,59 @@
+- name: Install Oracle preinstall package
+  ansible.builtin.dnf:
+    name: oracle-database-preinstall-23ai
+    state: present
+
+- name: Ensure Oracle OS groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - "{{ oracle_install_group }}"
+    - "{{ oracle_dba_group }}"
+
+- name: Ensure Oracle install user exists
+  ansible.builtin.user:
+    name: "{{ oracle_install_user }}"
+    group: "{{ oracle_install_group }}"
+    groups: "{{ oracle_dba_group }}"
+    append: true
+    create_home: true
+    shell: /bin/bash
+
+- name: Ensure Oracle directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ oracle_install_user }}"
+    group: "{{ oracle_install_group }}"
+    mode: "0755"
+  loop:
+    - "{{ oracle_install_base }}"
+    - "{{ oracle_oradata_path }}"
+
+- name: Apply Oracle kernel and limits settings
+  ansible.builtin.template:
+    src: oracle-rdbms.conf.j2
+    dest: /etc/sysctl.d/98-oracle-rdbms.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: oracle_manage_kernel_params | bool
+
+- name: Reload sysctl
+  ansible.builtin.command: sysctl --system
+  changed_when: true
+  when: oracle_manage_kernel_params | bool
+
+- name: Install Oracle Database Free package (optional)
+  ansible.builtin.dnf:
+    name: "{{ oracle_free_package }}"
+    state: present
+  when: oracle_install_mode == 'free23ai'
+
+- name: Ensure Oracle Free service is enabled and started
+  ansible.builtin.service:
+    name: oracle-free-23ai
+    state: started
+    enabled: true
+  when: oracle_install_mode == 'free23ai'

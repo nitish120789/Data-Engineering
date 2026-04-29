@@ -1,0 +1,24 @@
+storage:
+  dbPath: /var/lib/mongo
+  journal:
+    enabled: true
+  wiredTiger:
+{% if mongodb_wiredtiger_cache_size_gb | int > 0 %}
+    engineConfig:
+      cacheSizeGB: {{ mongodb_wiredtiger_cache_size_gb }}
+{% endif %}
+
+systemLog:
+  destination: file
+  logAppend: true
+  path: /var/log/mongodb/mongod.log
+
+net:
+  port: 27017
+  bindIp: {{ mongodb_bind_ip }}
+
+replication:
+  oplogSizeMB: {{ mongodb_oplog_size_mb }}
+
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo

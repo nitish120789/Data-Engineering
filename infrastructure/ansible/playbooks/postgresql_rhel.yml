@@ -1,0 +1,7 @@
+- name: Install and configure PostgreSQL on RHEL
+  hosts: postgresql
+  become: true
+  gather_facts: true
+  roles:
+    - common_rhel
+    - postgresql

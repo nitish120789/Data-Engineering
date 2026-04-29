@@ -1,0 +1,27 @@
+- name: Install MySQL community release package
+  ansible.builtin.dnf:
+    name: https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm
+    disable_gpg_check: true
+    state: present
+
+- name: Install MySQL server and tools
+  ansible.builtin.dnf:
+    name:
+      - mysql-community-server
+      - mysql-shell
+    state: present
+
+- name: Deploy performance-oriented my.cnf
+  ansible.builtin.template:
+    src: my.cnf.j2
+    dest: "{{ mysql_config_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart mysql
+
+- name: Ensure MySQL service is enabled and started
+  ansible.builtin.service:
+    name: "{{ mysql_service_name }}"
+    state: started
+    enabled: true

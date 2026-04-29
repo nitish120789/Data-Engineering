@@ -1,0 +1,15 @@
+[mysqld]
+bind-address = {{ mysql_bind_address }}
+max_connections = {{ mysql_max_connections }}
+table_open_cache = {{ mysql_table_open_cache }}
+tmp_table_size = {{ mysql_tmp_table_size }}
+max_heap_table_size = {{ mysql_tmp_table_size }}
+innodb_buffer_pool_size = {{ mysql_innodb_buffer_pool_size }}
+innodb_flush_method = {{ mysql_innodb_flush_method }}
+innodb_flush_log_at_trx_commit = {{ mysql_innodb_flush_log_at_trx_commit }}
+innodb_file_per_table = 1
+performance_schema = ON
+skip_name_resolve = ON
+
+[client]
+default-character-set = utf8mb4

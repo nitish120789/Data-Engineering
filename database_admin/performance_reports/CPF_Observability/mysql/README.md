@@ -42,14 +42,36 @@ Edit `config/default.env`:
 - Engine-specific keys are also available for MySQL, PostgreSQL, SQL Server, Oracle, Redis, MongoDB, ClickHouse, Cassandra, and Cosmos DB.
 
 ## AWR-Style Sections Produced
-The TXT/HTML report includes as much detail as available for the engine and permissions:
-- Instance identity and version
-- Uptime, connection pressure, and throughput counters
-- Wait/resource pressure and IO/cache indicators
-- Top workload statements and heavy operations
-- Blocking/deadlock or lock contention signals
-- Replication/cluster indicators where applicable
-- Additional engine diagnostics (for example, InnoDB status, wait stats, active operations)
+## AWR-Style Sections Produced (25 sections)
+The HTML report is structured with a dashboard header, sticky sidebar navigation, auto-findings panel, and per-section data tables. All sections use `performance_schema`, `information_schema`, and `SHOW` commands — no external schema extensions required.
+
+| # | Section | AWR / ASH Analogue |
+|---|---------|-------------------|
+| 1 | Instance Identity and Version | DB_VERSION / instance info |
+| 2 | Server Configuration Key Variables | DB Parameters / init.ora equivalents |
+| 3 | Database Inventory and Size | Segment / tablespace size summary |
+| 4 | Connection Pressure and Session Mix | Active session summary, V$SESSION equivalent |
+| 5 | Workload Throughput Counters | AWR Load Profile — batch rates, DML, slow queries |
+| 6 | Temporary Objects and Sort Pressure | PGA/temp space workload indicators |
+| 7 | InnoDB Buffer Pool Health | Buffer cache hit ratio, dirty pages, wait-free pages |
+| 8 | InnoDB IO and Log Pressure | V$FILESTAT / redo log write pressure indicators |
+| 9 | Statement Wait Events | AWR Top Wait Events (performance_schema waits) |
+| 10 | Lock Wait and Deadlock Counters | V$LOCK, lock wait and deadlock event counts |
+| 11 | Active Sessions (ASH Analogue) | ASH — in-flight non-idle sessions with state/SQL |
+| 12 | Active Lock Wait Chains | Blocking analysis (waiting trx → blocking trx) |
+| 13 | Long-Running Transactions | Long-running open transactions with row lock depth |
+| 14 | Top SQL by Total Time | AWR Top SQL by elapsed time |
+| 15 | Top SQL by Execution Count | AWR Top SQL by executions |
+| 16 | Top SQL by Rows Examined | AWR Top SQL by buffer gets / rows processed |
+| 17 | Top SQL by Temp Disk Tables | Temp-space heavy SQL (sort/hash spill equivalent) |
+| 18 | Top SQL by Errors and Warnings | SQL with error or warning accumulation |
+| 19 | Table IO Latency | AWR Segment IO — per-table read/write latency |
+| 20 | User and Host Activity Summary | Session activity grouped by user and host |
+| 21 | Schema Size and Top Tables | Tablespace / object storage breakdown |
+| 22 | Binary Log and GTID Status | Redo log / archive log status + GTID mode |
+| 23 | Replication Status (MySQL 8+) | Data Guard / redo apply status (SHOW REPLICA STATUS) |
+| 24 | Replication Status (MySQL 5.7 Legacy) | Legacy SHOW SLAVE STATUS (5.7 compat) |
+| 25 | InnoDB Engine Status | Full InnoDB internal diagnostics (SHOW ENGINE INNODB STATUS) |
 
 ## Troubleshooting
 - `No such file or directory` on Linux script execution:

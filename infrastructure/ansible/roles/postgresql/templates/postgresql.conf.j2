@@ -1,0 +1,13 @@
+listen_addresses = '{{ postgresql_listen_addresses }}'
+port = {{ postgresql_port }}
+max_connections = {{ postgresql_max_connections }}
+shared_buffers = {{ postgresql_shared_buffers }}
+effective_cache_size = {{ postgresql_effective_cache_size }}
+work_mem = {{ postgresql_work_mem }}
+maintenance_work_mem = {{ postgresql_maintenance_work_mem }}
+wal_compression = {{ postgresql_wal_compression }}
+checkpoint_completion_target = {{ postgresql_checkpoint_completion_target }}
+password_encryption = '{{ postgresql_password_encryption }}'
+logging_collector = on
+log_min_duration_statement = 1000
+log_checkpoints = on

@@ -1,0 +1,66 @@
+rhel_min_supported_major: 9
+db_timezone: UTC
+
+# Common OS baseline tuning
+disable_thp: true
+tuned_profile: throughput-performance
+db_sysctl:
+  vm.swappiness: 1
+  vm.dirty_ratio: 15
+  vm.dirty_background_ratio: 3
+  fs.file-max: 2097152
+  net.core.somaxconn: 65535
+
+db_limits:
+  - domain: "*"
+    type: soft
+    item: nofile
+    value: 1048576
+  - domain: "*"
+    type: hard
+    item: nofile
+    value: 1048576
+  - domain: "*"
+    type: soft
+    item: nproc
+    value: 262144
+  - domain: "*"
+    type: hard
+    item: nproc
+    value: 262144
+
+# PostgreSQL defaults
+postgresql_version: "17"
+postgresql_listen_addresses: "*"
+postgresql_max_connections: 400
+postgresql_shared_buffers: "8GB"
+postgresql_effective_cache_size: "24GB"
+postgresql_work_mem: "32MB"
+postgresql_maintenance_work_mem: "1GB"
+postgresql_wal_compression: "on"
+postgresql_checkpoint_completion_target: "0.9"
+postgresql_password_encryption: "scram-sha-256"
+
+# MySQL defaults
+mysql_version: "8.4"
+mysql_bind_address: "0.0.0.0"
+mysql_innodb_buffer_pool_size: "8G"
+mysql_innodb_flush_method: "O_DIRECT"
+mysql_innodb_flush_log_at_trx_commit: 1
+mysql_max_connections: 500
+mysql_table_open_cache: 4000
+mysql_tmp_table_size: "256M"
+
+# MongoDB defaults
+mongodb_major: "8.0"
+mongodb_bind_ip: "0.0.0.0"
+mongodb_wiredtiger_cache_size_gb: 0
+mongodb_oplog_size_mb: 8192
+
+# Oracle defaults
+oracle_install_mode: "free23ai"
+oracle_manage_kernel_params: true
+oracle_enable_hugepages: false
+oracle_hugepages_count: 0
+oracle_sga_target: "8G"
+oracle_pga_aggregate_target: "2G"

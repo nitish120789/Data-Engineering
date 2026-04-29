@@ -1,0 +1,7 @@
+- name: Install and configure MySQL on RHEL
+  hosts: mysql
+  become: true
+  gather_facts: true
+  roles:
+    - common_rhel
+    - mysql

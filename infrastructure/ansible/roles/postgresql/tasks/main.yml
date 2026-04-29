@@ -1,0 +1,51 @@
+- name: Install PGDG repo package
+  ansible.builtin.dnf:
+    name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    disable_gpg_check: true
+    state: present
+
+- name: Disable RHEL module PostgreSQL stream
+  ansible.builtin.command: dnf -qy module disable postgresql
+  changed_when: true
+
+- name: Install PostgreSQL server and client packages
+  ansible.builtin.dnf:
+    name:
+      - "postgresql{{ postgresql_version }}"
+      - "postgresql{{ postgresql_version }}-server"
+      - "postgresql{{ postgresql_version }}-contrib"
+    state: present
+
+- name: Check if PostgreSQL cluster is initialized
+  ansible.builtin.stat:
+    path: "{{ postgresql_data_dir }}/PG_VERSION"
+  register: pg_cluster_state
+
+- name: Initialize PostgreSQL cluster
+  ansible.builtin.command: "{{ postgresql_setup_bin }} initdb"
+  when: not pg_cluster_state.stat.exists
+  changed_when: true
+
+- name: Deploy tuned postgresql.conf
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "{{ postgresql_data_dir }}/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  notify: restart postgresql
+
+- name: Deploy secure pg_hba.conf
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "{{ postgresql_data_dir }}/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  notify: restart postgresql
+
+- name: Ensure PostgreSQL service is enabled and started
+  ansible.builtin.service:
+    name: "{{ postgresql_service_name }}"
+    state: started
+    enabled: true

@@ -1,0 +1,9 @@
+common_packages:
+  - chrony
+  - tuned
+  - policycoreutils-python-utils
+  - lsof
+  - sysstat
+  - unzip
+  - tar
+  - vim-enhanced

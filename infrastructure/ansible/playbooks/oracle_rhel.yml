@@ -1,0 +1,7 @@
+- name: Install and configure Oracle prerequisites and database on RHEL
+  hosts: oracle
+  become: true
+  gather_facts: true
+  roles:
+    - common_rhel
+    - oracle

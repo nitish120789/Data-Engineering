@@ -1,0 +1,6 @@
+- name: Apply common RHEL database baseline
+  hosts: db_all
+  become: true
+  gather_facts: true
+  roles:
+    - common_rhel

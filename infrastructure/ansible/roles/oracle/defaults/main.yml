@@ -1,0 +1,6 @@
+oracle_install_user: oracle
+oracle_install_group: oinstall
+oracle_dba_group: dba
+oracle_install_base: /opt/oracle
+oracle_oradata_path: /opt/oracle/oradata
+oracle_free_package: oracle-database-free-23ai

@@ -54,6 +54,16 @@ def build_findings(report_text: str) -> tuple[list[str], str]:
                 findings.append("IO or log-write pressure indicators are present; correlate file latency with top read/write statements.")
         if "query store" in lower:
                 findings.append("Query Store data is available; compare runtime outliers and plan regressions against recent change windows.")
+        if "innodb_deadlocks" in lower or "innodb_row_lock_waits" in lower:
+                findings.append("InnoDB deadlock or row lock wait pressure detected; investigate lock order and transaction scope.")
+        if "created_tmp_disk_tables" in lower:
+                findings.append("Temporary disk table usage detected; consider raising tmp_table_size/max_heap_table_size.")
+        if "innodb_log_waits" in lower:
+                findings.append("InnoDB log wait pressure present; consider increasing innodb_log_buffer_size.")
+        if "select_full_join" in lower or "no_index_used" in lower:
+                findings.append("Full-table scan or no-index-used signals present; review query plans and index coverage.")
+        if "slave_sql_running" in lower or "replica_sql_running" in lower:
+                findings.append("Replication data is present; validate replica lag and IO/SQL thread state.")
 
         if not findings:
                 findings.append("No explicit high-risk indicators were auto-detected; validate against workload SLO baselines.")
@@ -145,6 +155,32 @@ def render_html(engine: str, report_text: str, sections: list[tuple[str, str]]) 
                         return "Storage latency, file pressure, and recovery/log utilization signals."
                 if "query store" in lower_title:
                         return "Plan/runtime history useful for regression and outlier detection."
+                if "buffer pool" in lower_title:
+                        return "InnoDB buffer pool utilization, hit ratio, and dirty page pressure."
+                if "innodb io" in lower_title or "log pressure" in lower_title:
+                        return "InnoDB IO, redo log, and page operation pressure indicators."
+                if "statement wait" in lower_title:
+                        return "Performance Schema wait events sorted by cumulative wait time — analogous to AWR Top Wait Events."
+                if "lock wait" in lower_title or "transaction" in lower_title:
+                        return "Concurrency diagnostics: InnoDB lock waits, deadlocks, and long-running transactions."
+                if "table io" in lower_title:
+                        return "Per-table read/write latency — analogous to AWR Segment IO statistics."
+                if "user and host" in lower_title or "session mix" in lower_title:
+                        return "User/host session distribution and activity breakdown."
+                if "schema" in lower_title or "inventory" in lower_title:
+                        return "Object inventory, sizing, and storage allocation."
+                if "binary log" in lower_title:
+                        return "Binary log status, GTID state, and log file inventory."
+                if "replication" in lower_title:
+                        return "Replication channel state, lag, and IO/SQL thread health."
+                if "rows examined" in lower_title or "execution count" in lower_title or "temp disk" in lower_title or "errors" in lower_title:
+                        return "High-cost SQL ranked by a secondary resource or error dimension."
+                if "throughput" in lower_title or "workload" in lower_title:
+                        return "Aggregate workload throughput counters since last restart."
+                if "configuration" in lower_title or "server config" in lower_title:
+                        return "Key server configuration parameters affecting performance and durability."
+                if "active sessions" in lower_title or "ash" in lower_title:
+                        return "Current workload sample showing in-flight sessions, states, and SQL."
                 if "section unavailable" in lower_content:
                         return "This section could not be collected on the target due to permissions or feature availability."
                 return "Detailed engine telemetry captured for this diagnostic slice."

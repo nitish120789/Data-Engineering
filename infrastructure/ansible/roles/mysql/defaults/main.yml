@@ -1,0 +1,3 @@
+mysql_service_name: mysqld
+mysql_datadir: /var/lib/mysql
+mysql_config_file: /etc/my.cnf

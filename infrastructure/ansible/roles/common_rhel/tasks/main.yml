@@ -1,0 +1,73 @@
+- name: Validate supported RHEL major version
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "RedHat"
+      - (ansible_distribution_major_version | int) >= (rhel_min_supported_major | int)
+    fail_msg: "Only RHEL {{ rhel_min_supported_major }}+ is supported by these playbooks."
+
+- name: Install baseline packages
+  ansible.builtin.dnf:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Ensure chronyd is enabled and started
+  ansible.builtin.service:
+    name: chronyd
+    state: started
+    enabled: true
+
+- name: Set system timezone
+  community.general.timezone:
+    name: "{{ db_timezone }}"
+
+- name: Apply tuned profile for throughput workloads
+  ansible.builtin.command: tuned-adm profile {{ tuned_profile }}
+  changed_when: true
+
+- name: Persist tuned service
+  ansible.builtin.service:
+    name: tuned
+    state: started
+    enabled: true
+
+- name: Set db-oriented sysctl parameters
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+  loop: "{{ db_sysctl | dict2items }}"
+
+- name: Configure file descriptor and process limits
+  community.general.pam_limits:
+    domain: "{{ item.domain }}"
+    limit_type: "{{ item.type }}"
+    limit_item: "{{ item.item }}"
+    value: "{{ item.value }}"
+  loop: "{{ db_limits }}"
+
+- name: Disable transparent huge pages at boot
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/disable-thp.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Disable Transparent Huge Pages
+      After=multi-user.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/bash -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+      ExecStart=/bin/bash -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+      [Install]
+      WantedBy=multi-user.target
+  when: disable_thp | bool
+
+- name: Enable disable-thp service
+  ansible.builtin.systemd:
+    name: disable-thp
+    daemon_reload: true
+    state: started
+    enabled: true
+  when: disable_thp | bool

@@ -1,0 +1,2 @@
+mongodb_service_name: mongod
+mongodb_config_file: /etc/mongod.conf
