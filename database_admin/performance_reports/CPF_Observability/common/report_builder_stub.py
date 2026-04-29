@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -45,6 +46,14 @@ def build_findings(report_text: str) -> tuple[list[str], str]:
                 findings.append("Redo/log write pressure may be present; validate IOPS and log file throughput.")
         if "tmp_disk" in lower or "tmp table" in lower:
                 findings.append("Temporary object usage observed; inspect sort/hash memory limits and query patterns.")
+        if "blocking_session_id" in lower or "head blocker" in lower:
+                findings.append("Blocking chain data is present; check head blockers, transaction scope, and lock duration.")
+        if "memory grants pending" in lower or "resource_semaphore" in lower:
+                findings.append("Memory grant pressure indicators are present; inspect grant queues and large query concurrency.")
+        if "pageiolatch" in lower or "io/log" in lower or "writelog" in lower:
+                findings.append("IO or log-write pressure indicators are present; correlate file latency with top read/write statements.")
+        if "query store" in lower:
+                findings.append("Query Store data is available; compare runtime outliers and plan regressions against recent change windows.")
 
         if not findings:
                 findings.append("No explicit high-risk indicators were auto-detected; validate against workload SLO baselines.")
@@ -60,17 +69,124 @@ def render_html(engine: str, report_text: str, sections: list[tuple[str, str]]) 
         findings, recommendation = build_findings(report_text)
         generated = datetime.now(timezone.utc).isoformat()
 
+        def extract_key_value_pairs(content: str) -> list[tuple[str, str]]:
+                pairs: list[tuple[str, str]] = []
+                for line in content.splitlines():
+                        if ":" not in line:
+                                continue
+                        key, value = line.split(":", 1)
+                        key = key.strip()
+                        value = value.strip()
+                        if key and value:
+                                pairs.append((key, value))
+                return pairs
+
+        def looks_like_rule(line: str) -> bool:
+                cleaned = line.replace("|", "").replace(" ", "")
+                return bool(cleaned) and set(cleaned) <= {"-"}
+
+        def parse_table_block(lines: list[str]) -> tuple[list[str], list[list[str]]] | None:
+                if len(lines) < 2 or "|" not in lines[0] or not looks_like_rule(lines[1]):
+                        return None
+                headers = [part.strip() for part in lines[0].split("|")]
+                rows: list[list[str]] = []
+                for raw in lines[2:]:
+                        if not raw.strip() or "|" not in raw:
+                                continue
+                        cells = [part.strip() for part in raw.split("|")]
+                        if len(cells) != len(headers):
+                                continue
+                        rows.append(cells)
+                if not rows:
+                        return None
+                return headers, rows
+
+        def parse_content_blocks(content: str) -> list[tuple[str, object]]:
+                blocks: list[tuple[str, object]] = []
+                current: list[str] = []
+
+                def flush() -> None:
+                        nonlocal current
+                        if not current:
+                                return
+                        table = parse_table_block(current)
+                        if table:
+                                blocks.append(("table", table))
+                        else:
+                                text = "\n".join(current).strip()
+                                if text:
+                                        blocks.append(("text", text))
+                        current = []
+
+                for line in content.splitlines():
+                        if not line.strip():
+                                flush()
+                                continue
+                        current.append(line)
+                flush()
+                return blocks
+
+        def summarize_section(title: str, content: str) -> str:
+                lower_title = title.lower()
+                lower_content = content.lower()
+                if "wait" in lower_title:
+                        return "Primary wait pressure across tasks, categories, and active chains."
+                if "active requests" in lower_title or "ash" in lower_title:
+                        return "Current workload sample showing sessions, waits, and top in-flight statements."
+                if "cpu" in lower_title or "duration" in lower_title or "read and write" in lower_title:
+                        return "High-cost statements ranked by resource consumption and runtime impact."
+                if "blocking" in lower_title or "deadlock" in lower_title:
+                        return "Concurrency diagnostics for blockers, victims, and transaction contention."
+                if "memory" in lower_title or "tempdb" in lower_title:
+                        return "Memory grant, buffer, and workspace pressure indicators."
+                if "alwayson" in lower_title or "replica" in lower_title:
+                        return "Availability group synchronization and replica health status."
+                if "io" in lower_title or "log" in lower_title:
+                        return "Storage latency, file pressure, and recovery/log utilization signals."
+                if "query store" in lower_title:
+                        return "Plan/runtime history useful for regression and outlier detection."
+                if "section unavailable" in lower_content:
+                        return "This section could not be collected on the target due to permissions or feature availability."
+                return "Detailed engine telemetry captured for this diagnostic slice."
+
+        overview_pairs = extract_key_value_pairs(sections[0][1]) if sections else []
+        hero_metrics = overview_pairs[:4]
+        section_count = len(sections)
+        unavailable_count = report_text.lower().count("section unavailable")
+
         toc = []
         body = []
         for idx, (title, content) in enumerate(sections, start=1):
                 anchor = f"sec-{idx}"
                 toc.append(f"<li><a href='#{anchor}'>{html.escape(title)}</a></li>")
+                rendered_blocks: list[str] = []
+                for block_type, payload in parse_content_blocks(content):
+                        if block_type == "text":
+                                rendered_blocks.append(f"<pre>{html.escape(str(payload))}</pre>")
+                        else:
+                                headers, rows = payload  # type: ignore[misc]
+                                head_html = "".join(f"<th>{html.escape(col)}</th>" for col in headers)
+                                row_html = []
+                                for row in rows:
+                                        row_html.append("<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>")
+                                rendered_blocks.append(
+                                        "\n".join(
+                                                [
+                                                        "<div class='table-wrap'>",
+                                                        "  <table>",
+                                                        f"    <thead><tr>{head_html}</tr></thead>",
+                                                        f"    <tbody>{''.join(row_html)}</tbody>",
+                                                        "  </table>",
+                                                        "</div>",
+                                                ]
+                                        )
+                                )
                 body.append(
                         "\n".join(
                                 [
                                         f"<section id='{anchor}' class='card'>",
-                                        f"  <h3>{html.escape(title)}</h3>",
-                                        f"  <pre>{html.escape(content)}</pre>",
+                                        f"  <div class='section-head'><h3>{html.escape(title)}</h3><p>{html.escape(summarize_section(title, content))}</p></div>",
+                                        *rendered_blocks,
                                         "</section>",
                                 ]
                         )
@@ -86,37 +202,81 @@ def render_html(engine: str, report_text: str, sections: list[tuple[str, str]]) 
     <title>CPF AWR-Style Report - {html.escape(engine)}</title>
     <style>
         :root {{
-            --bg: #f7f9fc;
-            --fg: #0f172a;
-            --muted: #475569;
-            --card: #ffffff;
-            --border: #dbe3ef;
-            --accent: #0f766e;
+                        --bg: #f4efe6;
+                        --panel: #fffdf8;
+                        --panel-strong: #fffaf0;
+                        --fg: #172033;
+                        --muted: #5f6476;
+                        --border: #dfd3bf;
+                        --accent: #92400e;
+                        --accent-2: #0f766e;
+                        --accent-3: #1d4ed8;
+                        --shadow: 0 18px 40px rgba(23, 32, 51, 0.08);
         }}
-        body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: Segoe UI, Arial, sans-serif; }}
-        .wrap {{ max-width: 1280px; margin: 0 auto; padding: 24px; }}
-        .hero {{ background: linear-gradient(135deg, #e2f6f3, #e8efff); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }}
-        h1 {{ margin: 0 0 10px 0; }}
-        .meta {{ color: var(--muted); font-size: 13px; }}
-        .grid {{ display: grid; grid-template-columns: 300px 1fr; gap: 16px; margin-top: 16px; }}
-        .card {{ background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }}
-        pre {{ margin: 0; white-space: pre-wrap; word-break: break-word; font-family: Consolas, 'Courier New', monospace; font-size: 12px; line-height: 1.35; }}
-        ul {{ margin-top: 8px; }}
-        a {{ color: #0b4d9c; text-decoration: none; }}
+                * {{ box-sizing: border-box; }}
+                body {{ margin: 0; background: radial-gradient(circle at top left, #fff7e8 0, #f4efe6 45%, #ede5d7 100%); color: var(--fg); font-family: Segoe UI, Arial, sans-serif; }}
+                .wrap {{ max-width: 1560px; margin: 0 auto; padding: 28px; }}
+                .hero {{ background: linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(243, 248, 255, 0.96)); border: 1px solid var(--border); border-radius: 22px; padding: 28px; box-shadow: var(--shadow); }}
+                h1 {{ margin: 0 0 10px 0; font-size: 34px; line-height: 1.1; }}
+                h3 {{ margin: 0; }}
+                .meta {{ color: var(--muted); font-size: 13px; margin-top: 6px; }}
+                .hero-grid {{ display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start; }}
+                .hero-copy p {{ margin: 12px 0 0 0; max-width: 70ch; color: var(--muted); line-height: 1.5; }}
+                .metric-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
+                .metric {{ background: rgba(255,255,255,0.7); border: 1px solid var(--border); border-radius: 16px; padding: 14px; }}
+                .metric-label {{ color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }}
+                .metric-value {{ margin-top: 6px; font-weight: 700; font-size: 18px; word-break: break-word; }}
+                .summary-strip {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }}
+                .summary-card {{ background: var(--panel-strong); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }}
+                .summary-card strong {{ display: block; font-size: 24px; margin-top: 6px; }}
+                .grid {{ display: grid; grid-template-columns: 320px 1fr; gap: 18px; margin-top: 18px; align-items: start; }}
+                .card {{ background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }}
+                .sidebar {{ position: sticky; top: 16px; }}
+                .section-head {{ display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 14px; }}
+                .section-head p {{ margin: 0; color: var(--muted); max-width: 70ch; line-height: 1.45; }}
+                pre {{ margin: 0; white-space: pre-wrap; word-break: break-word; font-family: Consolas, 'Courier New', monospace; font-size: 12px; line-height: 1.45; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px; }}
+                ul {{ margin-top: 8px; padding-left: 18px; }}
+                ol {{ margin: 0; padding-left: 20px; }}
+                li {{ margin-bottom: 8px; }}
+                a {{ color: var(--accent-3); text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
-        @media (max-width: 1024px) {{ .grid {{ grid-template-columns: 1fr; }} }}
+                .table-wrap {{ overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; background: #fff; }}
+                table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+                thead {{ position: sticky; top: 0; z-index: 1; }}
+                th {{ background: #f8edd8; color: var(--fg); text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }}
+                td {{ padding: 10px 12px; border-bottom: 1px solid #eee3d3; vertical-align: top; }}
+                tbody tr:nth-child(even) {{ background: #fffaf1; }}
+                .badge {{ display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 10px; font-size: 12px; background: #fef3c7; color: #92400e; border: 1px solid #f1d18a; margin-bottom: 10px; }}
+                .muted {{ color: var(--muted); }}
+                @media (max-width: 1180px) {{ .hero-grid, .grid, .summary-strip {{ grid-template-columns: 1fr; }} .sidebar {{ position: static; }} .metric-grid {{ grid-template-columns: 1fr 1fr; }} }}
+                @media (max-width: 720px) {{ .wrap {{ padding: 16px; }} .metric-grid {{ grid-template-columns: 1fr; }} h1 {{ font-size: 28px; }} .section-head {{ display: block; }} .summary-strip {{ grid-template-columns: 1fr 1fr; }} }}
     </style>
 </head>
 <body>
     <div class="wrap">
         <div class="hero">
-            <h1>CPF Observability AWR-Style Report ({html.escape(engine)})</h1>
-            <div class="meta">Generated at {html.escape(generated)} UTC</div>
-            <div class="meta">Single-run deep diagnostic report (TXT + HTML)</div>
+                        <div class="hero-grid">
+                                <div class="hero-copy">
+                                        <div class="badge">AWR / ASH analogue for {html.escape(engine)}</div>
+                                        <h1>CPF Observability Performance Report</h1>
+                                        <div class="meta">Generated at {html.escape(generated)} UTC</div>
+                                        <div class="meta">Single-run deep diagnostic report with structured DMV, Query Store, IO, wait, memory, concurrency, and availability sections.</div>
+                                        <p>This report is organized to resemble the operator flow of an AWR-style review: start with identity and configuration, move through wait and resource pressure, then inspect active workload, top SQL, contention, storage, and HA state.</p>
+                                </div>
+                                <div class="metric-grid">
+                                        {''.join(f"<div class='metric'><div class='metric-label'>{html.escape(label)}</div><div class='metric-value'>{html.escape(value)}</div></div>" for label, value in hero_metrics) or "<div class='metric'><div class='metric-label'>Engine</div><div class='metric-value'>" + html.escape(engine) + "</div></div>"}
+                                </div>
+                        </div>
+                        <div class="summary-strip">
+                                <div class="summary-card"><span class="muted">Sections</span><strong>{section_count}</strong></div>
+                                <div class="summary-card"><span class="muted">Auto Findings</span><strong>{len(findings)}</strong></div>
+                                <div class="summary-card"><span class="muted">Unavailable Sections</span><strong>{unavailable_count}</strong></div>
+                                <div class="summary-card"><span class="muted">Render Mode</span><strong>Structured HTML</strong></div>
+                        </div>
         </div>
 
         <div class="grid">
-            <aside>
+                        <aside class="sidebar">
                 <div class="card">
                     <h3>Auto Findings</h3>
                     <ul>
