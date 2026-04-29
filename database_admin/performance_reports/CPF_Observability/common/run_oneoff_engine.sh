@@ -100,7 +100,6 @@ collect_mysql_family() {
   if [[ -n "${DB_PASSWORD}" ]]; then
     export MYSQL_PWD="${DB_PASSWORD}"
   fi
-
   echo "Running one-off snapshot at ${TS}" | tee -a "${LOG_FILE}"
   echo "Target: ${TARGET_DESC}" | tee -a "${LOG_FILE}"
 
@@ -246,12 +245,15 @@ collect_sqlserver_family() {
 
 oracle_sql_block() {
   local sql="$1"
+  local formatted_sql
+
+  formatted_sql="$(printf '%s\n' "${sql}" | perl -0pe 's/;\s+/;\n/g')"
   sqlplus -s "${ORACLE_CONN}" <<EOF
 SET LINESIZE 220
 SET PAGESIZE 500
 SET TRIMSPOOL ON
 SET FEEDBACK ON
-${sql}
+${formatted_sql}
 EXIT
 EOF
 }
