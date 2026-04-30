@@ -1,0 +1,243 @@
+# CDC (Change Data Capture) Configuration
+# Configures Oracle LogMiner extraction and PostgreSQL replay
+# Author: DBRE Team
+
+# ============================================================================
+# ORACLE SOURCE CONFIGURATION
+# ============================================================================
+
+# Oracle connection string (LogMiner host)
+ORACLE_HOST="10.0.0.50"
+ORACLE_PORT=1521
+ORACLE_SID="ORCL"
+ORACLE_USER="cdc_user"
+ORACLE_PASSWORD="<secure-password>"
+
+# Oracle version (12c, 18c, 19c, 21c)
+ORACLE_VERSION="19c"
+
+# Starting SCN (recorded at snapshot time for initial load)
+# This is the point-in-time from which CDC will capture changes
+ORACLE_START_SCN=123456789
+
+# Archive log retention (days; must support CDC polling window)
+ORACLE_ARCHIVE_LOG_RETENTION_DAYS=10
+
+# ============================================================================
+# LOGMINER CONFIGURATION
+# ============================================================================
+
+# Enable supplemental logging (Y/N)
+LOGMINER_SUPPLEMENTAL_LOG="Y"
+
+# LogMiner session name
+LOGMINER_SESSION_NAME="CDC_MIGRATION"
+
+# Poll interval (seconds; how often to check for new changes)
+LOGMINER_POLL_INTERVAL=5
+
+# Max redo logs to load per session
+LOGMINER_MAX_REDO_LOGS=100
+
+# Continuous mining mode (Y/N; captures changes as they occur)
+LOGMINER_CONTINUOUS_MINING="Y"
+
+# Include DDL changes (Y/N; usually N for migration)
+LOGMINER_INCLUDE_DDL="N"
+
+# ============================================================================
+# CDC EXTRACTOR (oracle_logminer_cdc.py)
+# ============================================================================
+
+# CDC output queue (JSON Lines format)
+CDC_OUTPUT_QUEUE="/var/lib/cdc/changes.jsonl"
+
+# Batch size (rows per batch before writing to queue)
+CDC_BATCH_SIZE=10000
+
+# Number of parallel CDC extractors
+CDC_PARALLEL_STREAMS=4
+
+# Extractor process name
+CDC_PROCESS_NAME="oracle_logminer_cdc"
+
+# Extractor log file
+CDC_EXTRACTOR_LOG="/var/log/cdc_extractor.log"
+
+# Max queue file size before rotation (MB)
+CDC_QUEUE_MAX_SIZE_MB=1000
+
+# Queue archival (Y/N; archive old queue files)
+CDC_QUEUE_ARCHIVE="Y"
+
+# ============================================================================
+# POSTGRESQL TARGET CONFIGURATION
+# ============================================================================
+
+# PostgreSQL connection string (Replay host)
+PG_HOST="pg-target.postgres.database.azure.com"
+PG_PORT=5432
+PG_USER="postgres"
+PG_PASSWORD="<secure-password>"
+PG_DATABASE="oracle_migration"
+
+# PostgreSQL version
+PG_VERSION="15"
+
+# Connection pool size
+PG_POOL_SIZE=20
+
+# ============================================================================
+# CDC REPLAY ENGINE (cdc_replay_postgresql.py)
+# ============================================================================
+
+# Checkpoint table (tracks applied changes)
+CDC_CHECKPOINT_TABLE="public.cdc_checkpoint"
+
+# Replay batch size (rows per transaction)
+CDC_REPLAY_BATCH_SIZE=1000
+
+# Replay mode (IMMEDIATE/BATCH/QUEUED)
+# IMMEDIATE: apply changes as consumed
+# BATCH: batch multiple changes per transaction
+# QUEUED: stage changes to intermediate queue first
+CDC_REPLAY_MODE="BATCH"
+
+# Max lag tolerance (seconds; alert if exceeded)
+CDC_MAX_LAG_SECONDS=300
+
+# Replay process name
+CDC_REPLAY_PROCESS_NAME="cdc_replay_postgres"
+
+# Replay log file
+CDC_REPLAY_LOG="/var/log/cdc_replay.log"
+
+# ============================================================================
+# CONFLICT RESOLUTION
+# ============================================================================
+
+# Handle duplicate key conflicts (SKIP/UPSERT/ABORT)
+# SKIP: ignore duplicate inserts
+# UPSERT: update if exists, insert if not
+# ABORT: fail on any duplicate
+CDC_CONFLICT_RESOLUTION="SKIP"
+
+# Handle missing row on UPDATE/DELETE (SKIP/ABORT)
+# SKIP: silently skip
+# ABORT: fail and alert
+CDC_MISSING_ROW_RESOLUTION="SKIP"
+
+# ============================================================================
+# TABLE-SPECIFIC OVERRIDES
+# ============================================================================
+
+# Tables to exclude from CDC (comma-separated)
+CDC_EXCLUDE_TABLES="audit_log, system_tables"
+
+# Tables to prioritize (high-volume tables)
+CDC_PRIORITY_TABLES="orders, transactions"
+
+# Table-specific replay order (dependency order)
+# Format: table1,table2,table3,...
+CDC_REPLAY_TABLE_ORDER="customers, products, orders, order_items, shipments"
+
+# ============================================================================
+# MONITORING & ALERTING
+# ============================================================================
+
+# CDC lag monitoring interval (seconds)
+CDC_MONITOR_INTERVAL=60
+
+# Alert on CDC lag > threshold
+CDC_LAG_ALERT_THRESHOLD_SECONDS=600
+
+# Alert email
+CDC_ALERT_EMAIL="dba-team@company.com"
+
+# Slack webhook for alerts (optional)
+CDC_SLACK_WEBHOOK="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+# ============================================================================
+# PERFORMANCE TUNING
+# ============================================================================
+
+# Parallel extraction degree (tables to extract in parallel)
+CDC_EXTRACT_PARALLEL=4
+
+# Redo log buffer size (MB)
+CDC_REDO_BUFFER_SIZE=512
+
+# Commit frequency (number of changes before commit)
+CDC_COMMIT_FREQUENCY=5000
+
+# Memory limit for CDC extractor (GB)
+CDC_EXTRACTOR_MEMORY_GB=8
+
+# ============================================================================
+# RECOVERY & CHECKPOINTING
+# ============================================================================
+
+# Checkpoint frequency (changes per checkpoint)
+CDC_CHECKPOINT_FREQUENCY=50000
+
+# Enable crash recovery (Y/N)
+CDC_CRASH_RECOVERY="Y"
+
+# Recovery mode (RESUME/RESTART)
+# RESUME: continue from last checkpoint
+# RESTART: restart from specified SCN
+CDC_RECOVERY_MODE="RESUME"
+
+# ============================================================================
+# CUTOFF WINDOW CONFIGURATION
+# ============================================================================
+
+# Expected CDC lag at cutoff (seconds)
+# If actual lag exceeds this, cutoff may be delayed
+EXPECTED_CDC_LAG_CUTOFF=60
+
+# Final CDC sync wait time (seconds; wait for lag to close)
+FINAL_CDC_SYNC_WAIT=120
+
+# Maximum cutoff delay (minutes; abort cutoff if exceeded)
+MAX_CUTOFF_DELAY_MINUTES=30
+
+# ============================================================================
+# VALIDATION
+# ============================================================================
+
+# Post-replay validation (Y/N)
+CDC_POST_REPLAY_VALIDATION="Y"
+
+# Validate row counts match (Y/N)
+CDC_VALIDATE_ROW_COUNTS="Y"
+
+# Sample validation (Y/N; validate % of rows)
+CDC_SAMPLE_VALIDATION="Y"
+
+# Sample validation percentage (1-100)
+CDC_SAMPLE_VALIDATION_PERCENT=10
+
+# ============================================================================
+# CLEANUP & RETENTION
+# ============================================================================
+
+# Retain CDC queue after cutoff (days)
+CDC_QUEUE_RETENTION_DAYS=30
+
+# Archive old queue files (Y/N)
+CDC_QUEUE_ARCHIVE_OLD="Y"
+
+# Delete queue after successful cutoff (Y/N)
+CDC_DELETE_QUEUE_POST_CUTOFF="N"
+
+# ============================================================================
+# NOTES
+# ============================================================================
+# 1. ORACLE_START_SCN: Record from snapshot before initial load starts
+#    Query: SELECT DBMS_FLASHBACK.GET_SYSTEM_CHANGE_NUMBER FROM DUAL;
+# 2. CDC_PARALLEL_STREAMS: Set to 1 for initial testing, increase for prod
+# 3. CDC_BATCH_SIZE: Larger batches = more memory, faster throughput
+# 4. CDC_REPLAY_BATCH_SIZE: Tune based on transaction commit frequency
+# 5. Monitor CDC_LAG continuously during migration windows
+# 6. Keep PostgreSQL connection pool tuned to prevent connection exhaustion
