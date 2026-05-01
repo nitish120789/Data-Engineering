@@ -1,0 +1,32 @@
+run:
+  run_id: recon_20260501_0001
+  stage: during_migration
+  report_dir: reports
+  fail_on_mismatch: true
+
+scope:
+  critical_tables:
+    - orders
+    - order_items
+    - payments
+  non_critical_tables:
+    - audit_log
+
+table_defaults:
+  primary_key: id
+  updated_at_column: updated_at
+  deleted_flag_column: is_deleted
+  deleted_at_column: deleted_at
+
+thresholds:
+  count_match_required_pct: 100
+  hash_match_required_pct: 100
+  update_delete_match_required_pct: 100
+
+connections:
+  source:
+    engine: postgresql
+    dsn_env: SOURCE_DSN
+  target:
+    engine: postgresql
+    dsn_env: TARGET_DSN
