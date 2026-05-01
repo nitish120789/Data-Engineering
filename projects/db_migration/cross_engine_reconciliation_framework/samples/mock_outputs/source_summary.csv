@@ -1,0 +1,6 @@
+schema_name,table_name,row_count,hash_sum,updated_count,deleted_count,run_ts
+public,orders,1250000,9876543210,8421,120,2026-05-01T00:30:00Z
+public,order_items,5125000,1234509876,14425,85,2026-05-01T00:30:00Z
+public,payments,850000,777777777,2201,15,2026-05-01T00:30:00Z
+public,shipments,610000,555550001,1104,9,2026-05-01T00:30:00Z
+public,audit_log,25200000,333330999,50440,0,2026-05-01T00:30:00Z
