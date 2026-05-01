@@ -1,0 +1,46 @@
+aws_region           = "us-east-1"
+project_name         = "payments-platform"
+environment          = "prod"
+acm_certificate_arn  = "arn:aws:acm:us-east-1:123456789012:certificate/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+ami_id               = "ami-0abc1234def567890"
+
+vpc_cidr             = "10.40.0.0/16"
+az_count             = 3
+allowed_ingress_cidrs = [
+  "0.0.0.0/0"
+]
+
+app_port             = 8080
+health_check_path    = "/health"
+instance_type        = "m7i.large"
+asg_min_size         = 3
+asg_desired_capacity = 3
+asg_max_size         = 9
+
+db_engine                 = "postgres"
+db_engine_version         = "16.3"
+db_parameter_group_family = "postgres16"
+db_instance_class         = "db.m7g.large"
+db_allocated_storage      = 200
+db_max_allocated_storage  = 1000
+db_name                   = "appdb"
+db_master_username        = "appadmin"
+db_backup_retention_days  = 35
+
+redis_node_type      = "cache.r7g.large"
+redis_engine_version = "7.1"
+redis_port           = 6379
+# redis_auth_token   = "<set-from-secure-ci-secret>"
+
+enable_waf              = true
+enable_alb_access_logs  = true
+enable_vpc_flow_logs    = true
+
+# Optional alarm endpoint
+# alarm_email_endpoint = "dba-oncall@example.com"
+
+common_tags = {
+  Owner       = "platform-team"
+  CostCenter  = "FIN-DBRE"
+  Compliance  = "PCI"
+}
