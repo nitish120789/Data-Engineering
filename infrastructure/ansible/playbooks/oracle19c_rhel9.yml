@@ -1,0 +1,384 @@
+- name: Install and configure Oracle Database 19c on RHEL 9
+  hosts: oracle
+  become: true
+  gather_facts: true
+
+  vars:
+    oracle_user: oracle
+    oracle_primary_group: oinstall
+    oracle_groups:
+      - dba
+      - oper
+      - backupdba
+      - dgdba
+      - kmdba
+      - racdba
+
+    oracle_base: /u01/app/oracle
+    oracle_inventory: /u01/app/oraInventory
+    oracle_home: /u01/app/oracle/product/19.0.0/dbhome_1
+    oracle_stage_dir: /u01/stage
+    oracle_response_dir: /tmp/oracle19c-response
+
+    oracle_install_media: /u01/stage/LINUX.X64_193000_db_home.zip
+    oracle_preinstall_package: oracle-database-preinstall-19c
+    oracle_use_preinstall_package: true
+
+    oracle_db_name: ORCLCDB
+    oracle_sid: ORCLCDB
+    oracle_pdb_name: ORCLPDB1
+    oracle_character_set: AL32UTF8
+    oracle_memory_mb: 8192
+    oracle_datafile_dest: /u02/oradata
+    oracle_recovery_dest: /u03/fra
+    oracle_create_database: true
+    oracle_enable_archivelog: true
+
+    oracle_sys_password: "{{ vault_oracle_sys_password | default('') }}"
+    oracle_system_password: "{{ vault_oracle_system_password | default('') }}"
+    oracle_pdbadmin_password: "{{ vault_oracle_pdbadmin_password | default('') }}"
+
+    oracle_manual_prereq_packages:
+      - bc
+      - binutils
+      - elfutils-libelf
+      - gcc
+      - glibc
+      - glibc-devel
+      - ksh
+      - libaio
+      - libaio-devel
+      - libgcc
+      - libstdc++
+      - libstdc++-devel
+      - make
+      - procps-ng
+      - smartmontools
+      - sysstat
+      - unzip
+      - xorg-x11-xauth
+
+    oracle_sysctl:
+      fs.aio-max-nr: "1048576"
+      fs.file-max: "6815744"
+      kernel.sem: "250 32000 100 128"
+      kernel.shmmni: "4096"
+      kernel.shmall: "1073741824"
+      kernel.shmmax: "4398046511104"
+      net.core.rmem_default: "262144"
+      net.core.rmem_max: "4194304"
+      net.core.wmem_default: "262144"
+      net.core.wmem_max: "1048576"
+      vm.swappiness: "1"
+
+    oracle_limits:
+      - { domain: oracle, type: soft, item: nofile, value: 1024 }
+      - { domain: oracle, type: hard, item: nofile, value: 65536 }
+      - { domain: oracle, type: soft, item: nproc, value: 2047 }
+      - { domain: oracle, type: hard, item: nproc, value: 16384 }
+      - { domain: oracle, type: soft, item: stack, value: 10240 }
+      - { domain: oracle, type: hard, item: stack, value: 32768 }
+
+  pre_tasks:
+    - name: Validate supported operating system
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "RedHat"
+          - (ansible_distribution_major_version | int) == 9
+          - ansible_architecture == "x86_64"
+        fail_msg: This playbook supports Oracle 19c only on RHEL 9 x86_64 hosts.
+
+    - name: Validate installer media exists on managed host
+      ansible.builtin.stat:
+        path: "{{ oracle_install_media }}"
+      register: oracle_media_stat
+
+    - name: Fail when installer media is missing
+      ansible.builtin.assert:
+        that:
+          - oracle_media_stat.stat.exists
+        fail_msg: "Oracle 19c zip media not found at {{ oracle_install_media }}"
+
+    - name: Validate password inputs when database creation is enabled
+      ansible.builtin.assert:
+        that:
+          - oracle_sys_password | length >= 12
+          - oracle_system_password | length >= 12
+          - oracle_pdbadmin_password | length >= 12
+        fail_msg: >-
+          Provide strong 12+ character passwords via Ansible Vault variables
+          (vault_oracle_sys_password, vault_oracle_system_password, vault_oracle_pdbadmin_password).
+      when: oracle_create_database | bool
+
+  tasks:
+    - name: Ensure Oracle OS groups exist
+      ansible.builtin.group:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ [oracle_primary_group] + oracle_groups }}"
+
+    - name: Ensure Oracle installation user exists
+      ansible.builtin.user:
+        name: "{{ oracle_user }}"
+        group: "{{ oracle_primary_group }}"
+        groups: "{{ oracle_groups | join(',') }}"
+        append: true
+        create_home: true
+        shell: /bin/bash
+
+    - name: Install Oracle preinstall package
+      ansible.builtin.dnf:
+        name: "{{ oracle_preinstall_package }}"
+        state: present
+      when: oracle_use_preinstall_package | bool
+
+    - name: Install manual prerequisite packages
+      ansible.builtin.dnf:
+        name: "{{ oracle_manual_prereq_packages }}"
+        state: present
+      when: not oracle_use_preinstall_package | bool
+
+    - name: Apply Oracle sysctl settings for manual prerequisite mode
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop: "{{ oracle_sysctl | dict2items }}"
+      when: not oracle_use_preinstall_package | bool
+
+    - name: Apply Oracle limits for manual prerequisite mode
+      community.general.pam_limits:
+        domain: "{{ item.domain }}"
+        limit_type: "{{ item.type }}"
+        limit_item: "{{ item.item }}"
+        value: "{{ item.value }}"
+      loop: "{{ oracle_limits }}"
+      when: not oracle_use_preinstall_package | bool
+
+    - name: Ensure Oracle filesystem layout exists
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default(oracle_user) }}"
+        group: "{{ item.group | default(oracle_primary_group) }}"
+        mode: "{{ item.mode | default('0755') }}"
+      loop:
+        - { path: "{{ oracle_stage_dir }}" }
+        - { path: "{{ oracle_base }}" }
+        - { path: "{{ oracle_home }}" }
+        - { path: "{{ oracle_inventory }}", owner: oracle_user, group: oracle_primary_group }
+        - { path: "{{ oracle_datafile_dest }}" }
+        - { path: "{{ oracle_recovery_dest }}" }
+        - { path: "{{ oracle_response_dir }}", owner: root, group: root, mode: '0750' }
+
+    - name: Configure Oracle user shell environment
+      ansible.builtin.copy:
+        dest: /etc/profile.d/oracle19c.sh
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          export ORACLE_BASE={{ oracle_base }}
+          export ORACLE_HOME={{ oracle_home }}
+          export ORACLE_SID={{ oracle_sid }}
+          export PATH=$PATH:$ORACLE_HOME/bin
+
+    - name: Unpack Oracle 19c installer into ORACLE_HOME
+      ansible.builtin.unarchive:
+        src: "{{ oracle_install_media }}"
+        dest: "{{ oracle_home }}"
+        remote_src: true
+        owner: "{{ oracle_user }}"
+        group: "{{ oracle_primary_group }}"
+        creates: "{{ oracle_home }}/runInstaller"
+
+    - name: Create software installation response file
+      ansible.builtin.copy:
+        dest: "{{ oracle_response_dir }}/db_install.rsp"
+        owner: "{{ oracle_user }}"
+        group: "{{ oracle_primary_group }}"
+        mode: "0600"
+        content: |
+          oracle.install.responseFileVersion=/oracle/install/rspfmt_dbinstall_response_schema_v19.0.0
+          oracle.install.option=INSTALL_DB_SWONLY
+          UNIX_GROUP_NAME={{ oracle_primary_group }}
+          INVENTORY_LOCATION={{ oracle_inventory }}
+          ORACLE_BASE={{ oracle_base }}
+          ORACLE_HOME={{ oracle_home }}
+          oracle.install.db.InstallEdition=EE
+          oracle.install.db.OSDBA_GROUP={{ oracle_groups[0] }}
+          oracle.install.db.OSOPER_GROUP={{ oracle_groups[1] }}
+          oracle.install.db.OSBACKUPDBA_GROUP={{ oracle_groups[2] }}
+          oracle.install.db.OSDGDBA_GROUP={{ oracle_groups[3] }}
+          oracle.install.db.OSKMDBA_GROUP={{ oracle_groups[4] }}
+          oracle.install.db.OSRACDBA_GROUP={{ oracle_groups[5] }}
+          SECURITY_UPDATES_VIA_MYORACLESUPPORT=false
+          DECLINE_SECURITY_UPDATES=true
+
+    - name: Run Oracle 19c software-only installation silently
+      ansible.builtin.command: >-
+        {{ oracle_home }}/runInstaller
+        -silent
+        -waitforcompletion
+        -ignorePrereqFailure
+        -responseFile {{ oracle_response_dir }}/db_install.rsp
+      become_user: "{{ oracle_user }}"
+      register: oracle_install_cmd
+      changed_when: >-
+        'Successfully Setup Software' in (oracle_install_cmd.stdout | default(''))
+        or 'The installation of Oracle Database was successful' in (oracle_install_cmd.stdout | default(''))
+      failed_when:
+        - oracle_install_cmd.rc != 0
+      args:
+        creates: "{{ oracle_home }}/bin/sqlplus"
+
+    - name: Run oraInventory root script
+      ansible.builtin.command: "{{ oracle_inventory }}/orainstRoot.sh"
+      args:
+        creates: /etc/oraInst.loc
+
+    - name: Run Oracle home root script
+      ansible.builtin.command: "{{ oracle_home }}/root.sh"
+      args:
+        creates: /etc/oratab
+
+    - name: Create DBCA response file
+      ansible.builtin.copy:
+        dest: "{{ oracle_response_dir }}/dbca.rsp"
+        owner: "{{ oracle_user }}"
+        group: "{{ oracle_primary_group }}"
+        mode: "0600"
+        content: |
+          responseFileVersion=/oracle/assistants/rspfmt_dbca_response_schema_v19.0.0
+          gdbName={{ oracle_db_name }}
+          sid={{ oracle_sid }}
+          templateName=General_Purpose.dbc
+          createAsContainerDatabase=true
+          numberOfPDBs=1
+          pdbName={{ oracle_pdb_name }}
+          useLocalUndoForPDBs=true
+          datafileDestination={{ oracle_datafile_dest }}
+          recoveryAreaDestination={{ oracle_recovery_dest }}
+          storageType=FS
+          characterSet={{ oracle_character_set }}
+          totalMemory={{ oracle_memory_mb }}
+          databaseType=MULTIPURPOSE
+          automaticMemoryManagement=false
+          enableArchive=true
+          initParams=db_recovery_file_dest={{ oracle_recovery_dest }},db_recovery_file_dest_size=10240MB,audit_trail=DB
+          sysPassword={{ oracle_sys_password }}
+          systemPassword={{ oracle_system_password }}
+          pdbAdminPassword={{ oracle_pdbadmin_password }}
+      when: oracle_create_database | bool
+
+    - name: Check if database is already registered in oratab
+      ansible.builtin.shell: "grep -E '^{{ oracle_sid }}:' /etc/oratab"
+      register: oracle_oratab_check
+      changed_when: false
+      failed_when: false
+      when: oracle_create_database | bool
+
+    - name: Create Oracle CDB and PDB with DBCA
+      ansible.builtin.command: >-
+        {{ oracle_home }}/bin/dbca
+        -silent
+        -createDatabase
+        -responseFile {{ oracle_response_dir }}/dbca.rsp
+      become_user: "{{ oracle_user }}"
+      register: oracle_dbca_cmd
+      changed_when: >-
+        'Database creation complete' in (oracle_dbca_cmd.stdout | default(''))
+        or oracle_dbca_cmd.rc == 0
+      when:
+        - oracle_create_database | bool
+        - oracle_oratab_check.rc != 0
+
+    - name: Enable Oracle autostart in oratab
+      ansible.builtin.lineinfile:
+        path: /etc/oratab
+        regexp: "^{{ oracle_sid }}:"
+        line: "{{ oracle_sid }}:{{ oracle_home }}:Y"
+        create: true
+
+    - name: Create systemd unit for Oracle instance
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/oracle-{{ oracle_sid | lower }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Oracle Database {{ oracle_sid }}
+          After=network.target
+
+          [Service]
+          Type=forking
+          User={{ oracle_user }}
+          Group={{ oracle_primary_group }}
+          Environment=ORACLE_HOME={{ oracle_home }}
+          Environment=ORACLE_SID={{ oracle_sid }}
+          ExecStart={{ oracle_home }}/bin/dbstart {{ oracle_home }}
+          ExecStop={{ oracle_home }}/bin/dbshut {{ oracle_home }}
+          Restart=no
+          TimeoutStartSec=600
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable and start Oracle systemd unit
+      ansible.builtin.systemd:
+        name: "oracle-{{ oracle_sid | lower }}"
+        daemon_reload: true
+        enabled: true
+        state: started
+
+    - name: Ensure ARCHIVELOG mode is enabled
+      ansible.builtin.shell: |
+        set -o pipefail
+        {{ oracle_home }}/bin/sqlplus -s / as sysdba <<'SQL'
+        whenever sqlerror exit failure
+        set heading off feedback off pages 0
+        select log_mode from v$database;
+        SQL
+      become_user: "{{ oracle_user }}"
+      register: oracle_log_mode
+      changed_when: false
+      args:
+        executable: /bin/bash
+      when:
+        - oracle_create_database | bool
+        - oracle_enable_archivelog | bool
+
+    - name: Switch database to ARCHIVELOG mode when required
+      ansible.builtin.shell: |
+        set -o pipefail
+        {{ oracle_home }}/bin/sqlplus -s / as sysdba <<'SQL'
+        whenever sqlerror exit failure
+        shutdown immediate;
+        startup mount;
+        alter database archivelog;
+        alter database open;
+        SQL
+      become_user: "{{ oracle_user }}"
+      register: oracle_archivelog_enable
+      changed_when: oracle_archivelog_enable.rc == 0
+      args:
+        executable: /bin/bash
+      when:
+        - oracle_create_database | bool
+        - oracle_enable_archivelog | bool
+        - "'ARCHIVELOG' not in (oracle_log_mode.stdout | default(''))"
+
+  post_tasks:
+    - name: Validate Oracle listener status
+      ansible.builtin.command: "{{ oracle_home }}/bin/lsnrctl status"
+      become_user: "{{ oracle_user }}"
+      register: oracle_listener_status
+      changed_when: false
+      failed_when: false
+
+    - name: Validate SQL*Plus availability
+      ansible.builtin.command: "{{ oracle_home }}/bin/sqlplus -V"
+      become_user: "{{ oracle_user }}"
+      changed_when: false

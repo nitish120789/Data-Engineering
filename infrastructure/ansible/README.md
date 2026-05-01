@@ -21,6 +21,7 @@ This directory provides generic DBA-ready Ansible playbooks for installing and c
 - playbooks/mysql_rhel.yml
 - playbooks/mongodb_rhel.yml
 - playbooks/oracle_rhel.yml
+- playbooks/oracle19c_rhel9.yml
 - roles/
 
 ## Usage
@@ -58,6 +59,7 @@ ansible-playbook playbooks/postgresql_rhel.yml
 ansible-playbook playbooks/mysql_rhel.yml
 ansible-playbook playbooks/mongodb_rhel.yml
 ansible-playbook playbooks/oracle_rhel.yml
+ansible-playbook playbooks/oracle19c_rhel9.yml
 ansible-playbook playbooks/site.yml
 ```
 
@@ -106,6 +108,14 @@ ansible-playbook playbooks/site.yml -u ansible --become
 - Installs Oracle preinstall package, users/groups, and directories.
 - Applies Oracle kernel parameters from `/etc/sysctl.d/98-oracle-rdbms.conf`.
 - Optionally installs and starts Oracle Database Free 23ai when `oracle_install_mode=free23ai`.
+
+### playbooks/oracle19c_rhel9.yml
+
+- Applies a dedicated Oracle 19c enterprise install flow on `oracle` hosts running RHEL 9.
+- Validates OS/architecture and installer media path before host mutation.
+- Installs Oracle prerequisites (preinstall package or manual package/sysctl/limits path).
+- Runs silent software-only install, root scripts, DBCA CDB/PDB creation, and systemd autostart setup.
+- Supports secure password injection via Ansible Vault variables for SYS/SYSTEM/PDBADMIN.
 
 ### playbooks/site.yml
 
