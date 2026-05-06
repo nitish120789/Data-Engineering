@@ -1,0 +1,49 @@
+{
+  "Logging": {
+    "EnableLogging": true,
+    "EnableLogContext": true,
+    "LogComponents": [
+      {"Id": "SOURCE_UNLOAD", "Severity": "LOGGER_SEVERITY_DEFAULT"},
+      {"Id": "TARGET_LOAD", "Severity": "LOGGER_SEVERITY_DEFAULT"},
+      {"Id": "PERFORMANCE", "Severity": "LOGGER_SEVERITY_DEFAULT"},
+      {"Id": "TASK_MANAGER", "Severity": "LOGGER_SEVERITY_DEFAULT"}
+    ]
+  },
+  "TargetMetadata": {
+    "TargetSchema": "public",
+    "SupportLobs": true,
+    "FullLobMode": false,
+    "LobChunkSize": 64,
+    "LimitedSizeLobMode": true,
+    "LobMaxSize": 128,
+    "BatchApplyEnabled": true,
+    "ParallelApplyThreads": 8,
+    "ParallelApplyBufferSize": 1000
+  },
+  "FullLoadSettings": {
+    "TargetTablePrepMode": "DO_NOTHING",
+    "CreatePkAfterFullLoad": true,
+    "StopTaskCachedChangesApplied": false,
+    "StopTaskCachedChangesNotApplied": false,
+    "MaxFullLoadSubTasks": 16,
+    "TransactionConsistencyTimeout": 600
+  },
+  "ChangeProcessingTuning": {
+    "BatchApplyPreserveTransaction": true,
+    "BatchApplyTimeoutMin": 1,
+    "BatchApplyTimeoutMax": 30,
+    "BatchApplyMemoryLimit": 1024,
+    "StatementCacheSize": 100,
+    "CommitTimeout": 1,
+    "RecoveryTimeout": 30
+  },
+  "ValidationSettings": {
+    "EnableValidation": false,
+    "ValidationOnly": false,
+    "ThreadCount": 8,
+    "FailureMaxCount": 10000
+  },
+  "ControlTablesSettings": {
+    "ControlSchema": "dms_control"
+  }
+}

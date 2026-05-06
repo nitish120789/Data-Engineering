@@ -1,0 +1,41 @@
+# Security and network controls checklist
+# Author: Nitish Anand Srivastava
+
+network:
+  private_connectivity_required: true
+  approved_paths:
+    - onprem_to_azure_via_expressroute_or_vpn
+  firewall_controls:
+    allowlist_sources:
+      - dms_subnet
+      - migration_bastion
+    deny_all_else: true
+  dns:
+    private_dns_zone_configured: true
+
+identity_and_access:
+  least_privilege_roles:
+    oracle_dms_user: true
+    postgres_migration_user: true
+    read_only_validation_user: true
+  mfa_for_portal_access: true
+  secret_management:
+    use_key_vault: true
+    rotation_days: 30
+
+encryption:
+  in_transit_tls: required
+  at_rest_encryption: enabled
+  customer_managed_keys: optional
+
+audit_and_compliance:
+  dms_task_audit_retention_days: 90
+  migration_change_ticket_required: true
+  data_handling:
+    pii_masking_nonprod: true
+    chain_of_custody_for_databox: true
+
+operations:
+  approved_maintenance_windows_defined: true
+  rollback_playbook_tested: true
+  incident_escalation_matrix_available: true

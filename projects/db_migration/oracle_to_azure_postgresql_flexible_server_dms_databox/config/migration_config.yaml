@@ -1,0 +1,52 @@
+# Migration configuration template
+# Author: Nitish Anand Srivastava
+
+program:
+  name: oracle_to_azure_postgresql_flexible_server_dms_databox
+  environment: production
+  target_cutover_window_utc: "2026-06-20T01:00:00Z"
+
+source_oracle:
+  host: "oracle-prod.internal.local"
+  port: 1521
+  service_name: "ORCLP01"
+  archivelog_required: true
+  supplemental_logging_required: true
+  anchor_scn: 542198771
+  schemas:
+    - ERP
+    - BILLING
+    - RISK
+
+target_postgresql:
+  host: "pg-flex-prod.postgres.database.azure.com"
+  port: 5432
+  database: "appdb"
+  sslmode: "require"
+  target_version: "15"
+  multi_az: true
+
+databox:
+  staging_storage_account: "stgdatamigprod01"
+  container: "oracle-baseline"
+  manifest_path: "scripts/databox_export_manifest_template.csv"
+  checksum_algorithm: "sha256"
+
+dms:
+  task_name: "oracle40tb-prod-cdc"
+  settings_file: "config/dms_task_settings.json"
+  table_mappings_file: "config/dms_table_mappings.json"
+  cdc_lag_slo_seconds: 300
+
+reconciliation:
+  critical_row_mismatch_tolerance_pct: 0.00
+  non_critical_row_mismatch_tolerance_pct: 0.01
+  critical_hash_mismatch_allowed: 0
+  kpi_tolerance:
+    revenue_pct: 0.00
+    inventory_pct: 0.01
+    risk_exposure_pct: 0.00
+
+rollback:
+  decision_window_minutes: 45
+  source_unfreeze_requires_cab_approval: true
