@@ -107,6 +107,107 @@ oracle_to_azure_postgresql_flexible_server_dms_databox/
 - Azure Database for PostgreSQL Flexible Server
 - Optional conversion helpers: ora2pg, SCT, custom SQL/Python mappers
 
+## Script Usage Examples
+
+The examples below show a practical run order for the scripts in this project.
+
+### 1. Run source assessment on Oracle
+
+```bash
+sqlplus system@ORCLP01 @scripts/pre_migration_assessment.sql
+```
+
+Expected output:
+- Oracle version and character set details
+- Largest-table and LOB footprint profile
+- Invalid object list and redo generation trend
+
+### 2. Run DMS preflight checks on Oracle
+
+```bash
+sqlplus system@ORCLP01 @scripts/dms_preflight_checks.sql DMS_USER=dms_user SCHEMA_NAME=ERP
+```
+
+This validates ARCHIVELOG mode, supplemental logging, privileges, and tables without PKs.
+
+### 3. Prepare Data Box manifest for baseline exports
+
+Use the template file:
+
+```text
+scripts/databox_export_manifest_template.csv
+```
+
+Populate one row per export chunk with:
+- table name and chunk id
+- anchor SCN
+- row count and file size
+- SHA-256 checksum
+- source path and Data Box path
+
+### 4. Apply DMS settings and table mappings
+
+Use:
+- `config/dms_task_settings.json`
+- `config/dms_table_mappings.json`
+
+Example Azure CLI flow:
+
+```bash
+az dms task create \
+  --resource-group rg-migration \
+  --service-name dms-prod \
+  --project-name oracle-to-pg \
+  --name oracle40tb-prod-cdc \
+  --source-endpoint source-oracle \
+  --target-endpoint target-pg-flex \
+  --table-mappings "@config/dms_table_mappings.json" \
+  --task-type migrate \
+  --migration-type online
+```
+
+Note: exact DMS CLI parameters can vary by service/API version. Keep this as a template and adjust to your subscription setup.
+
+### 5. Execute reconciliation queries during dry-run/cutover
+
+The file `scripts/reconciliation_queries.sql` is a template. Replace placeholders such as `%TABLE_NAME%`, `%PK_COL%`, and `%FILTER_PREDICATE%` before execution.
+
+Example on PostgreSQL:
+
+```bash
+psql "host=pg-flex-prod.postgres.database.azure.com port=5432 dbname=appdb user=migration_user sslmode=require" \
+  -f scripts/reconciliation_queries.sql
+```
+
+### 6. Run cutover orchestration skeleton
+
+Set required environment variables and execute:
+
+```bash
+export SOURCE_FREEZE_COMMAND="./ops/freeze_writes.sh"
+export DMS_TASK_NAME="oracle40tb-prod-cdc"
+export RECON_SCRIPT_PATH="./ops/run_final_reconciliation.sh"
+bash scripts/cutover_orchestration.sh
+```
+
+PowerShell equivalent:
+
+```powershell
+$env:SOURCE_FREEZE_COMMAND = "./ops/freeze_writes.sh"
+$env:DMS_TASK_NAME = "oracle40tb-prod-cdc"
+$env:RECON_SCRIPT_PATH = "./ops/run_final_reconciliation.sh"
+bash scripts/cutover_orchestration.sh
+```
+
+### Recommended execution order
+
+1. `pre_migration_assessment.sql`
+2. `dms_preflight_checks.sql`
+3. Data Box manifest population and baseline export shipment
+4. DMS task creation using config JSON files
+5. Reconciliation template adaptation and repeated validation runs
+6. `cutover_orchestration.sh` during rehearsal and production cutover
+
 ## Author
 
 Author: Nitish Anand Srivastava
