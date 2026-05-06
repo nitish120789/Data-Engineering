@@ -111,6 +111,12 @@ oracle_to_azure_postgresql_flexible_server_dms_databox/
 
 The examples below show a practical run order for the scripts in this project.
 
+Minimum tools expected on operator host:
+- Oracle SQL*Plus client
+- psql client for PostgreSQL
+- Azure CLI authenticated to target subscription
+- Bash shell for cutover orchestration script
+
 ### 1. Run source assessment on Oracle
 
 ```bash
@@ -125,7 +131,7 @@ Expected output:
 ### 2. Run DMS preflight checks on Oracle
 
 ```bash
-sqlplus system@ORCLP01 @scripts/dms_preflight_checks.sql DMS_USER=dms_user SCHEMA_NAME=ERP
+sqlplus system@ORCLP01 @scripts/dms_preflight_checks.sql dms_user ERP
 ```
 
 This validates ARCHIVELOG mode, supplemental logging, privileges, and tables without PKs.
@@ -179,6 +185,11 @@ psql "host=pg-flex-prod.postgres.database.azure.com port=5432 dbname=appdb user=
   -f scripts/reconciliation_queries.sql
 ```
 
+Important:
+- This file includes separate Oracle and PostgreSQL query blocks.
+- Replace placeholders like <TABLE_NAME>, <PK_COL>, <WINDOW_START> before execution.
+- Keep the same table window and sort key in both engines for meaningful checksum comparison.
+
 ### 6. Run cutover orchestration skeleton
 
 Set required environment variables and execute:
@@ -187,6 +198,10 @@ Set required environment variables and execute:
 export SOURCE_FREEZE_COMMAND="./ops/freeze_writes.sh"
 export DMS_TASK_NAME="oracle40tb-prod-cdc"
 export RECON_SCRIPT_PATH="./ops/run_final_reconciliation.sh"
+export DMS_LAG_CHECK_COMMAND="./ops/check_dms_lag_zero.sh"
+export DMS_MAX_WAIT_SECONDS=3600
+export DMS_POLL_INTERVAL_SECONDS=20
+export ROLLBACK_COMMAND="./ops/rollback_cutover.sh"
 bash scripts/cutover_orchestration.sh
 ```
 
@@ -196,8 +211,21 @@ PowerShell equivalent:
 $env:SOURCE_FREEZE_COMMAND = "./ops/freeze_writes.sh"
 $env:DMS_TASK_NAME = "oracle40tb-prod-cdc"
 $env:RECON_SCRIPT_PATH = "./ops/run_final_reconciliation.sh"
+$env:DMS_LAG_CHECK_COMMAND = "./ops/check_dms_lag_zero.sh"
+$env:DMS_MAX_WAIT_SECONDS = "3600"
+$env:DMS_POLL_INTERVAL_SECONDS = "20"
+$env:ROLLBACK_COMMAND = "./ops/rollback_cutover.sh"
 bash scripts/cutover_orchestration.sh
 ```
+
+### Junior DBA Dry-Run Checklist (recommended before production)
+
+1. Execute pre-assessment and save output logs.
+2. Execute DMS preflight checks and resolve all privilege/PK gaps.
+3. Validate Data Box manifest entries for chunk counts and checksums.
+4. Start DMS in rehearsal environment and validate lag behavior over peak traffic window.
+5. Run reconciliation template for at least five critical tables and confirm parity.
+6. Execute cutover_orchestration.sh in rehearsal with timeout and rollback hooks configured.
 
 ### Recommended execution order
 

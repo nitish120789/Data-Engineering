@@ -27,6 +27,11 @@ Azure Components:
 - Storage account + container hierarchy for manifests and payloads
 - Azure DMS instance deployed in network path with source and target reachability
 
+Operator readiness:
+- SQL*Plus, psql, Azure CLI, and bash installed on jump host
+- Access validated for Oracle source and PostgreSQL target from same host
+- Command output logging location defined for audit evidence
+
 ## 3. Phase-by-Phase Execution
 
 ## Phase 0: Discovery and Readiness
@@ -125,6 +130,11 @@ Exit criteria:
 - Lag stable within SLO
 - No unresolved high-severity DMS task errors
 
+Minimum monitoring cadence during this phase:
+- Every 15 minutes during first 24 hours after task start
+- Every hour once stability is confirmed
+- Immediate escalation for repeated apply failures, not only hard task stops
+
 ## Phase 5: Dress Rehearsal Cutovers
 
 1. Simulate freeze and production-like CDC drain.
@@ -151,6 +161,11 @@ Rollback trigger examples:
 - Critical business transaction failures not resolved within decision window
 - Unrecoverable data integrity mismatch in critical entities
 - Severe performance regression breaching agreed thresholds
+
+Rollback execution discipline:
+- Assign one rollback owner and one approver before freeze starts
+- Keep rollback command/script pre-tested and immutable for production run
+- Record exact rollback invocation timestamp and rationale in cutover log
 
 ## 4. Cutover Timeline Template (Example)
 

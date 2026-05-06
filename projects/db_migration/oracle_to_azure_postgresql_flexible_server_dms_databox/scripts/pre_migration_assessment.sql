@@ -1,8 +1,17 @@
 -- Pre-migration assessment for Oracle source
 -- Author: Nitish Anand Srivastava
 
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+WHENEVER OSERROR EXIT FAILURE
+
 SET PAGESIZE 200
 SET LINESIZE 240
+SET FEEDBACK ON
+
+PROMPT
+PROMPT === Usage ===
+PROMPT sqlplus system@ORCLP01 @scripts/pre_migration_assessment.sql
+PROMPT
 
 PROMPT === Oracle Version and Character Set ===
 SELECT * FROM v$version;
@@ -15,7 +24,7 @@ SELECT owner,
        segment_name AS table_name,
        ROUND(bytes / 1024 / 1024 / 1024, 2) AS size_gb
 FROM dba_segments
-WHERE segment_type = 'TABLE'
+WHERE segment_type IN ('TABLE', 'TABLE PARTITION', 'TABLE SUBPARTITION')
 ORDER BY bytes DESC
 FETCH FIRST 50 ROWS ONLY;
 
@@ -45,5 +54,10 @@ SELECT TO_CHAR(first_time, 'YYYY-MM-DD HH24') AS hour_bucket,
        ROUND(SUM(blocks * block_size) / 1024 / 1024 / 1024, 2) AS redo_gb
 FROM v$archived_log
 WHERE first_time >= SYSDATE - 7
+    AND archived = 'YES'
 GROUP BY TO_CHAR(first_time, 'YYYY-MM-DD HH24')
 ORDER BY hour_bucket;
+
+PROMPT
+PROMPT Assessment completed successfully.
+EXIT SUCCESS
