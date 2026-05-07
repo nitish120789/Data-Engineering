@@ -63,6 +63,35 @@ oracle_to_aurora_postgresql_dms/
 - logs/
   - .gitkeep
 
+## Publication Assumptions
+
+This pack assumes the following before anyone starts execution:
+- Oracle source is reachable from the AWS DMS replication instance through VPN or Direct Connect.
+- Aurora PostgreSQL cluster is already provisioned and reachable from the same DMS instance.
+- Schema conversion is executed and reviewed before starting DMS full load.
+- In-scope DDL changes are frozen once DMS CDC begins.
+- Application owners are available for smoke tests and business validation during rehearsal and production cutover.
+
+This pack does not include:
+- Terraform or CloudFormation for AWS DMS infrastructure provisioning
+- application-specific smoke test scripts
+- engine-specific rollback automation for every environment
+
+## Who Should Use This
+
+Primary audience:
+- DBAs executing migrations with AWS DMS
+- platform engineers provisioning AWS database and networking components
+- application owners supporting cutover validation
+
+Recommended reading order:
+1. README.md
+2. docs/ARCHITECTURE.md
+3. docs/SCHEMA_CONVERSION_GUIDE.md
+4. docs/MIGRATION_RUNBOOK.md
+5. docs/VALIDATION_AND_CUTOVER.md
+6. docs/TROUBLESHOOTING.md
+
 ## Detailed Usage Walkthrough
 
 ### 1. Source discovery and readiness checks
@@ -120,8 +149,51 @@ psql "host=aurora-pg.cluster-xxxx.us-east-1.rds.amazonaws.com port=5432 dbname=a
 Use these config files:
 - config/dms_task_settings.json
 - config/dms_table_mappings.json
+- config/migration_config.yaml
 
-Example AWS CLI pattern:
+Before creating the task, create and test endpoints plus replication instance reachability.
+
+Example source endpoint creation:
+
+```bash
+aws dms create-endpoint \
+  --endpoint-identifier oracle-source-endpoint \
+  --endpoint-type source \
+  --engine-name oracle \
+  --username dms_user \
+  --password '<secure-password>' \
+  --server-name oracle-prod.internal.local \
+  --port 1521 \
+  --database-name ORCLPRD
+```
+
+Example target endpoint creation:
+
+```bash
+aws dms create-endpoint \
+  --endpoint-identifier aurora-target-endpoint \
+  --endpoint-type target \
+  --engine-name aurora-postgresql \
+  --username migration_user \
+  --password '<secure-password>' \
+  --server-name aurora-pg.cluster-xxxx.us-east-1.rds.amazonaws.com \
+  --port 5432 \
+  --database-name appdb
+```
+
+Test both endpoints before creating the replication task:
+
+```bash
+aws dms test-connection \
+  --replication-instance-arn arn:aws:dms:us-east-1:123456789012:rep:REPLICATIONINSTANCE \
+  --endpoint-arn arn:aws:dms:us-east-1:123456789012:endpoint:SRCENDPOINT
+
+aws dms test-connection \
+  --replication-instance-arn arn:aws:dms:us-east-1:123456789012:rep:REPLICATIONINSTANCE \
+  --endpoint-arn arn:aws:dms:us-east-1:123456789012:endpoint:TGTENDPOINT
+```
+
+Create the replication task:
 
 ```bash
 aws dms create-replication-task \
@@ -142,6 +214,11 @@ aws dms start-replication-task \
   --start-replication-task-type start-replication
 ```
 
+Expected operator checkpoints:
+- endpoint tests return successful
+- task enters running state without immediate table errors
+- full load completes for all critical tables before cutover rehearsal
+
 ### 4. CDC monitoring and operational checks
 
 Monitor task health and lag:
@@ -151,11 +228,19 @@ aws dms describe-replication-tasks \
   --filters Name=replication-task-id,Values=oracle100gb-full-load-cdc
 ```
 
+Recommended metrics to monitor continuously:
+- CDCLatencySource
+- CDCLatencyTarget
+- FullLoadThroughputRowsTarget
+- FullLoadErrorRowsTarget
+- CPU and free memory on the replication instance
+
 Validate that:
 - full load has completed successfully
 - CDC latency is within agreed threshold
 - no repeated table-level apply failures exist
 - no unresolved LOB truncation or datatype mapping issues remain
+- no in-scope DDL has been introduced after CDC start
 
 ### 5. Reconciliation and validation
 
@@ -206,6 +291,16 @@ bash scripts/cutover_checklist.sh
 - Sequence drift after full load and CDC
 - DDL drift after DMS task start
 - Business reports matching row counts but failing semantic validation
+
+## Publication Readiness Checklist
+
+Use this checklist before sharing or executing the pack in another team:
+- Replace all placeholder endpoint ARNs, hostnames, schema names, and credentials references.
+- Review config/dms_table_mappings.json for real schema inclusion and exclusion rules.
+- Validate config/ora2pg.conf against actual Oracle service name and schema.
+- Pre-build application smoke tests and reconciliation report templates for the target workload.
+- Review scripts/sequence_reseed.sql and replace sample objects with real sequence mappings.
+- Confirm rollback owner, command, and decision window are documented for the target program.
 
 ## Success Criteria
 

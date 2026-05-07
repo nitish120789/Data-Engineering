@@ -21,6 +21,13 @@ Before cutover:
 - checksum parity confirmed on agreed windows
 - sequence reseed plan prepared
 - business report parity signed off
+- source and target CDC latency within agreed threshold for at least one stable monitoring window
+
+Suggested default thresholds for broad internal use:
+- critical row-count mismatch: 0
+- non-critical row-count mismatch: less than or equal to 0.01%
+- critical checksum mismatch: 0
+- CDC latency at freeze decision point: 0 seconds preferred, explicitly approved if non-zero
 
 ## Severity Classification
 
@@ -49,6 +56,15 @@ Class A and B issues block cutover.
 - DMS task still retrying specific tables despite overall running state
 - time-zone or rounding differences changing report results
 
+## Smoke Test Expectations
+
+At minimum, validate after cutover:
+- application login and connection initialization
+- one create transaction
+- one update transaction
+- one read/reporting workflow
+- one batch or scheduled process if the workload depends on it
+
 ## Evidence Pack
 
 - DMS task status export
@@ -56,6 +72,7 @@ Class A and B issues block cutover.
 - sequence reseed output
 - smoke test evidence
 - go/no-go decision log
+- endpoint connectivity test evidence
 
 ## Author
 

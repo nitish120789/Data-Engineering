@@ -16,11 +16,18 @@ Target Aurora PostgreSQL:
 - Migration user, application user, and validation user created
 - Storage, connection count, and failover posture validated
 
+AWS DMS infrastructure:
+- Replication instance sized for full load plus CDC overhead
+- Replication subnet group and security groups configured
+- Source and target endpoint creation planned and tested
+- CloudWatch logs and metrics access confirmed for migration team
+
 Operator host:
 - SQL*Plus installed
 - psql installed
 - aws cli installed and authenticated
 - ora2pg installed and tested
+- output directory for evidence and logs created in advance
 
 ## 2. Phase 0: Discovery
 
@@ -65,20 +72,23 @@ Exit criteria:
 ## 4. Phase 2: AWS DMS Preflight and Full Load
 
 1. Run scripts/dms_preflight_checks.sql.
-2. Validate endpoint connectivity from AWS DMS to Oracle and Aurora.
-3. Review config/dms_table_mappings.json and config/dms_task_settings.json.
-4. Create replication task in full-load-and-cdc mode.
-5. Start task and monitor full-load progress.
+2. Create source and target endpoints.
+3. Validate endpoint connectivity from AWS DMS to Oracle and Aurora.
+4. Review config/dms_table_mappings.json and config/dms_task_settings.json.
+5. Create replication task in full-load-and-cdc mode.
+6. Start task and monitor full-load progress.
 
 Watch for:
 - tables failing due to unsupported datatypes
 - large LOB columns stuck in retry loops
 - constraint violations during target apply
 - apply pauses due to insufficient target capacity
+- DMS endpoint tests failing because of network ACL, routing, or DNS problems
 
 Exit criteria:
 - full load completed for all in-scope critical tables
 - no unresolved critical DMS table failures
+- endpoint tests are successful for both source and target
 
 ## 5. Phase 3: CDC Stabilization
 
