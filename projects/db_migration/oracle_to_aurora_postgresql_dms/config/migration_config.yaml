@@ -1,0 +1,43 @@
+# Migration configuration template
+# Author: Nitish Anand Srivastava
+
+program:
+  name: oracle_to_aurora_postgresql_dms
+  environment: production
+  target_cutover_window_utc: "2026-07-18T01:00:00Z"
+
+source_oracle:
+  host: "oracle-prod.internal.local"
+  port: 1521
+  service_name: "ORCLPRD"
+  archivelog_required: true
+  force_logging_required: true
+  supplemental_logging_required: true
+  schemas:
+    - APP_SCHEMA
+  approximate_size_gb: 100
+
+target_aurora_postgresql:
+  writer_endpoint: "aurora-pg.cluster-xxxx.us-east-1.rds.amazonaws.com"
+  port: 5432
+  database: "appdb"
+  engine_version: "15"
+  sslmode: "require"
+
+dms:
+  replication_instance_id: "dms-oracle-100gb"
+  task_id: "oracle100gb-full-load-cdc"
+  settings_file: "config/dms_task_settings.json"
+  table_mappings_file: "config/dms_table_mappings.json"
+  source_latency_slo_seconds: 300
+  target_latency_slo_seconds: 300
+
+validation:
+  critical_row_mismatch_tolerance_pct: 0.00
+  non_critical_row_mismatch_tolerance_pct: 0.01
+  critical_hash_mismatch_allowed: 0
+  sequence_reseed_required: true
+
+rollback:
+  decision_window_minutes: 60
+  oracle_read_write_restore_required: true

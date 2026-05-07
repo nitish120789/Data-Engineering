@@ -1,0 +1,24 @@
+# Security and network controls
+# Author: Nitish Anand Srivastava
+
+network:
+  vpn_or_direct_connect_required: true
+  source_oracle_port: 1521
+  target_aurora_port: 5432
+  dms_replication_instance_reachability_required: true
+  least_open_firewall_policy: true
+
+identity_and_access:
+  oracle_dms_user_least_privilege: true
+  aurora_migration_user_least_privilege: true
+  aws_cli_role_separation: true
+  secrets_manager_or_equivalent_required: true
+
+encryption:
+  tls_in_transit_required: true
+  encryption_at_rest_required: true
+
+audit:
+  cloudtrail_enabled: true
+  dms_task_log_retention_days: 90
+  cutover_decision_log_required: true

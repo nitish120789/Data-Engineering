@@ -1,0 +1,44 @@
+{
+  "Logging": {
+    "EnableLogging": true,
+    "EnableLogContext": true,
+    "LogComponents": [
+      {"Id": "SOURCE_UNLOAD", "Severity": "LOGGER_SEVERITY_DEFAULT"},
+      {"Id": "TARGET_LOAD", "Severity": "LOGGER_SEVERITY_DEFAULT"},
+      {"Id": "TARGET_APPLY", "Severity": "LOGGER_SEVERITY_DEFAULT"},
+      {"Id": "TASK_MANAGER", "Severity": "LOGGER_SEVERITY_DEFAULT"}
+    ]
+  },
+  "TargetMetadata": {
+    "TargetSchema": "public",
+    "SupportLobs": true,
+    "FullLobMode": false,
+    "LimitedSizeLobMode": true,
+    "LobMaxSize": 64,
+    "LobChunkSize": 32,
+    "BatchApplyEnabled": true,
+    "ParallelApplyThreads": 4,
+    "ParallelApplyBufferSize": 500
+  },
+  "FullLoadSettings": {
+    "TargetTablePrepMode": "DO_NOTHING",
+    "CreatePkAfterFullLoad": true,
+    "MaxFullLoadSubTasks": 8,
+    "TransactionConsistencyTimeout": 600,
+    "CommitRate": 10000
+  },
+  "ChangeProcessingTuning": {
+    "BatchApplyPreserveTransaction": true,
+    "BatchApplyTimeoutMin": 1,
+    "BatchApplyTimeoutMax": 30,
+    "BatchApplyMemoryLimit": 512,
+    "StatementCacheSize": 50,
+    "CommitTimeout": 1,
+    "RecoveryTimeout": 30
+  },
+  "ValidationSettings": {
+    "EnableValidation": false,
+    "ThreadCount": 4,
+    "FailureMaxCount": 10000
+  }
+}

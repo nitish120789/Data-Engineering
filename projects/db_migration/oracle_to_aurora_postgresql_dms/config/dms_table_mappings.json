@@ -1,0 +1,46 @@
+{
+  "rules": [
+    {
+      "rule-type": "selection",
+      "rule-id": "1",
+      "rule-name": "include-app-schema",
+      "object-locator": {
+        "schema-name": "APP_SCHEMA",
+        "table-name": "%"
+      },
+      "rule-action": "include"
+    },
+    {
+      "rule-type": "selection",
+      "rule-id": "2",
+      "rule-name": "exclude-audit-tables",
+      "object-locator": {
+        "schema-name": "APP_SCHEMA",
+        "table-name": "AUDIT_%"
+      },
+      "rule-action": "exclude"
+    },
+    {
+      "rule-type": "transformation",
+      "rule-id": "3",
+      "rule-name": "lowercase-table-names",
+      "rule-target": "table",
+      "object-locator": {
+        "schema-name": "%",
+        "table-name": "%"
+      },
+      "rule-action": "convert-lowercase"
+    },
+    {
+      "rule-type": "transformation",
+      "rule-id": "4",
+      "rule-name": "map-to-public-schema",
+      "rule-target": "schema",
+      "object-locator": {
+        "schema-name": "%"
+      },
+      "rule-action": "rename",
+      "value": "public"
+    }
+  ]
+}
