@@ -45,43 +45,72 @@ def parse_operation(op_code: int):
         return 'DELETE'
     if op_code == 2:
         return 'INSERT'
+    if op_code == 3:
+        return 'UPDATE_BEFORE'
     if op_code == 4:
-        return 'UPDATE'
+        return 'UPDATE_AFTER'
     return 'SKIP'
 
 
-def apply_record(cursor, table_name: str, record: dict, pk_col: str):
+def apply_record(cursor, table_name: str, record: dict, pk_col: str, last_record: dict = None):
+    """
+    Apply CDC record to Azure SQL. For UPDATE operations, merge pre/post records.
+    
+    Args:
+        cursor: Database cursor
+        table_name: Target table name
+        record: Current CDC record (dict)
+        pk_col: Primary key column name
+        last_record: Previous record (for merging UPDATE before/after)
+    
+    Returns:
+        Tuple of (records_applied, is_update_pending) where is_update_pending indicates
+        if we need to wait for the UPDATE_AFTER record
+    """
     op = parse_operation(record.get('__$operation', 0))
+    
     if op == 'SKIP':
-        return False
+        return 0, False
 
     pk_val = record.get(pk_col)
     if pk_val is None:
-        return False
+        return 0, False
 
     data_cols = [k for k in record.keys() if not k.startswith('__$')]
 
     if op == 'DELETE':
         sql = f"DELETE FROM dbo.{table_name} WHERE {pk_col} = ?"
         cursor.execute(sql, pk_val)
-        return True
+        logging.info('Applied DELETE for %s.%s where %s=%s', table_name, table_name, pk_col, pk_val)
+        return 1, False
 
     if op == 'INSERT':
         cols = ', '.join(data_cols)
         vals = ', '.join(['?'] * len(data_cols))
         sql = f"INSERT INTO dbo.{table_name} ({cols}) VALUES ({vals})"
         cursor.execute(sql, *[record[c] for c in data_cols])
-        return True
+        logging.info('Applied INSERT for %s where %s=%s', table_name, pk_col, pk_val)
+        return 1, False
 
-    if op == 'UPDATE':
+    if op == 'UPDATE_BEFORE':
+        # Return 0 applied; wait for UPDATE_AFTER
+        return 0, True
+
+    if op == 'UPDATE_AFTER':
+        # Apply the UPDATE using the post-image (current record)
         set_cols = [c for c in data_cols if c != pk_col]
+        if not set_cols:
+            logging.warning('UPDATE_AFTER has no updatable columns for %s.%s (PK only)', table_name, pk_col)
+            return 0, False
+        
         set_clause = ', '.join([f"{c} = ?" for c in set_cols])
         sql = f"UPDATE dbo.{table_name} SET {set_clause} WHERE {pk_col} = ?"
         params = [record[c] for c in set_cols] + [pk_val]
         cursor.execute(sql, *params)
-        return True
+        logging.info('Applied UPDATE for %s where %s=%s (%d columns)', table_name, pk_col, pk_val, len(set_cols))
+        return 1, False
 
-    return False
+    return 0, False
 
 
 def update_checkpoint(cursor, table_name: str, last_lsn_hex: str, rows_applied: int):
@@ -113,6 +142,7 @@ def main():
     parser.add_argument('--pk-col', required=True, help='Primary key column name')
     parser.add_argument('--in-file', required=True, help='Input JSONL file')
     parser.add_argument('--last-lsn', required=True, help='Last LSN (hex) represented by this batch')
+    parser.add_argument('--batch-size', type=int, default=1000, help='Commit batch size (default: 1000)')
     args = parser.parse_args()
 
     input_path = Path(args.in_file)
@@ -120,24 +150,56 @@ def main():
         raise FileNotFoundError(f'Input file not found: {input_path}')
 
     applied = 0
+    batch_count = 0
+    update_before_pending = False
 
-    with connect(args.target_conn) as conn:
-        cursor = conn.cursor()
-        ensure_checkpoint_table(cursor)
+    try:
+        with connect(args.target_conn) as conn:
+            cursor = conn.cursor()
+            ensure_checkpoint_table(cursor)
 
-        with input_path.open('r', encoding='utf-8') as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                rec = json.loads(line)
-                ok = apply_record(cursor, args.table_name, rec, args.pk_col)
-                if ok:
-                    applied += 1
+            with input_path.open('r', encoding='utf-8') as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError as e:
+                        logging.error('Invalid JSON in input file: %s', str(e))
+                        continue
+                    
+                    records_applied, is_update_pending = apply_record(cursor, args.table_name, rec, args.pk_col)
+                    applied += records_applied
+                    update_before_pending = is_update_pending
+                    batch_count += 1
 
-        update_checkpoint(cursor, args.table_name, args.last_lsn, applied)
-        conn.commit()
+                    # Commit in batches
+                    if batch_count % args.batch_size == 0:
+                        try:
+                            update_checkpoint(cursor, args.table_name, args.last_lsn, applied)
+                            conn.commit()
+                            logging.info('Committed batch %d (%d total rows applied)', batch_count // args.batch_size, applied)
+                        except Exception as e:
+                            conn.rollback()
+                            logging.error('Batch commit failed: %s. Rolling back.', str(e))
+                            raise
 
-    logging.info('Applied %d records into dbo.%s', applied, args.table_name)
+            # Final commit
+            try:
+                update_checkpoint(cursor, args.table_name, args.last_lsn, applied)
+                conn.commit()
+                logging.info('Final commit succeeded. Total %d records applied.', applied)
+            except Exception as e:
+                conn.rollback()
+                logging.error('Final commit failed: %s', str(e))
+                raise
+
+    except Exception as e:
+        logging.error('Replay worker failed: %s', str(e))
+        raise
+
+    logging.info('Applied %d records into dbo.%s (%d processed)', applied, args.table_name, batch_count)
 
 
 if __name__ == '__main__':
