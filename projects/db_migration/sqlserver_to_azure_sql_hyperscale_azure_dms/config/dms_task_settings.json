@@ -1,0 +1,44 @@
+{
+  "TaskSettings": {
+    "TargetMetadata": {
+      "TargetSchema": "dbo",
+      "SupportLobs": true,
+      "FullLobMode": false,
+      "LobChunkSize": 64,
+      "ParallelLoadThreads": 8,
+      "ParallelApplyThreads": 16
+    },
+    "FullLoadSettings": {
+      "TargetTablePrepMode": "DO_NOTHING",
+      "CreatePkAfterFullLoad": false,
+      "StopTaskCachedChangesApplied": false,
+      "StopTaskCachedChangesNotApplied": false,
+      "MaxFullLoadSubTasks": 8,
+      "CommitRate": 10000
+    },
+    "Logging": {
+      "EnableLogging": true,
+      "LogComponents": [
+        { "Id": "SOURCE_UNLOAD", "Severity": "LOGGER_SEVERITY_DEFAULT" },
+        { "Id": "TARGET_LOAD", "Severity": "LOGGER_SEVERITY_DEFAULT" },
+        { "Id": "TASK_MANAGER", "Severity": "LOGGER_SEVERITY_DEFAULT" }
+      ]
+    },
+    "ValidationSettings": {
+      "EnableValidation": false
+    },
+    "ErrorBehavior": {
+      "DataErrorPolicy": "LOG_ERROR",
+      "TableErrorPolicy": "SUSPEND_TABLE",
+      "ApplyErrorInsertPolicy": "LOG_ERROR",
+      "ApplyErrorUpdatePolicy": "LOG_ERROR",
+      "ApplyErrorDeletePolicy": "LOG_ERROR"
+    },
+    "ChangeProcessingTuning": {
+      "BatchApplyPreserveTransaction": true,
+      "BatchApplyTimeoutMin": 1,
+      "BatchApplyTimeoutMax": 30,
+      "BatchApplyMemoryLimit": 1024
+    }
+  }
+}

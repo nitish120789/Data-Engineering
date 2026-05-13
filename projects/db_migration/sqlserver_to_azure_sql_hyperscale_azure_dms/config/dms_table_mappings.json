@@ -1,0 +1,39 @@
+{
+  "rules": [
+    {
+      "rule-type": "selection",
+      "rule-id": "1",
+      "rule-name": "include-dbo-tables",
+      "object-locator": {
+        "schema-name": "dbo",
+        "table-name": "%"
+      },
+      "rule-action": "include"
+    },
+    {
+      "rule-type": "selection",
+      "rule-id": "2",
+      "rule-name": "exclude-audit-tables",
+      "object-locator": {
+        "schema-name": "dbo",
+        "table-name": "audit_%"
+      },
+      "rule-action": "exclude"
+    },
+    {
+      "rule-type": "transformation",
+      "rule-id": "3",
+      "rule-name": "convert-datetimeoffset-to-datetime2",
+      "rule-target": "column",
+      "object-locator": {
+        "schema-name": "dbo",
+        "table-name": "%",
+        "column-name": "%"
+      },
+      "rule-action": "change-data-type",
+      "data-type": {
+        "type": "datetime2"
+      }
+    }
+  ]
+}

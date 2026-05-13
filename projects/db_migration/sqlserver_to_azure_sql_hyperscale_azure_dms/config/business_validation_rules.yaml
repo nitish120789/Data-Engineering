@@ -1,0 +1,26 @@
+rules:
+  - rule_name: orders_total_amount
+    table: dbo.orders
+    column: total_amount
+    aggregates: [SUM, MIN, MAX, COUNT]
+    filter: "1=1"
+    critical: true
+
+  - rule_name: customer_balance
+    table: dbo.customers
+    column: account_balance
+    aggregates: [SUM, MIN, MAX]
+    filter: "1=1"
+    critical: true
+
+  - rule_name: inventory_on_hand
+    table: dbo.inventory
+    column: quantity_on_hand
+    aggregates: [SUM, MIN, MAX]
+    filter: "1=1"
+    critical: false
+
+thresholds:
+  critical_tolerance_pct: 0.00
+  non_critical_tolerance_pct: 0.01
+  financial_tolerance_pct: 0.00

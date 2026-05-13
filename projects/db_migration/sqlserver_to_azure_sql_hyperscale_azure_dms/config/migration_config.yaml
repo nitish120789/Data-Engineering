@@ -1,0 +1,37 @@
+program:
+  name: sqlserver_to_azure_sql_hyperscale_azure_dms
+  environment: production
+  target_cutover_window_utc: "2026-08-14T01:00:00Z"
+
+source_sqlserver:
+  host: "sql-prod.company.local"
+  port: 1433
+  database: "ERPDB"
+  authentication: "aad_or_sql_auth"
+  cdc_enabled_required: true
+  recovery_model_required: "FULL"
+
+target_azure_sql_hyperscale:
+  server: "sql-target.database.windows.net"
+  database: "ERPDB"
+  service_tier: "Hyperscale"
+  zone_redundant: true
+
+dms:
+  resource_group: "rg-data-migration-prod"
+  service_name: "dms-prod-sql"
+  project_name: "sqlserver-to-hyperscale"
+  task_name: "erpdb-online-cdc"
+  migration_type: "online"
+  cdc_lag_slo_seconds: 300
+
+reconciliation:
+  linked_server_to_source: "LS_SQL_SOURCE"
+  run_id: "A6F52B4A-4D6A-4FD4-9988-5D4C3CBE8C20"
+  critical_row_mismatch_tolerance_pct: 0.00
+  critical_bucket_hash_mismatch_allowed: 0
+  business_aggregate_tolerance_pct: 0.00
+
+rollback:
+  decision_window_minutes: 30
+  source_unfreeze_requires_change_control: true
