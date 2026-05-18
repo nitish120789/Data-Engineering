@@ -1,0 +1,82 @@
+#!/bin/bash
+# Kubernetes CronJob for periodic database guardrails monitoring
+# Deploy: kubectl apply -f db-guardrails/ci-cd/k8s_guardrails_cronjob.yaml
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-guardrails-audit
+  namespace: database-ops
+spec:
+  # Run daily at 2 AM UTC
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: db-guardrails
+          containers:
+          - name: guardrails-monitor
+            image: python:3.10-slim
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: SQLSERVER_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-guardrails-secrets
+                  key: sqlserver-host
+            - name: SQLSERVER_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: db-guardrails-secrets
+                  key: sqlserver-database
+            - name: SQLSERVER_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-guardrails-secrets
+                  key: sqlserver-user
+            - name: SQLSERVER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-guardrails-secrets
+                  key: sqlserver-password
+            volumeMounts:
+            - name: scripts
+              mountPath: /guardrails
+              readOnly: true
+            command:
+            - /bin/bash
+            - -c
+            - |
+              pip install pyodbc pyyaml > /dev/null
+              python /guardrails/mutation_safeguard_monitor.py --config /guardrails/guardrails.yaml
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          restartPolicy: OnFailure
+          volumes:
+          - name: scripts
+            configMap:
+              name: db-guardrails-scripts
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: db-guardrails
+  namespace: database-ops
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-guardrails-scripts
+  namespace: database-ops
+data:
+  guardrails.yaml: |
+    max_execution_seconds: 30
+    block_delete_without_where: true
+    block_update_without_where: true
+    block_truncate: true

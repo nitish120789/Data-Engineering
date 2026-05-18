@@ -1,0 +1,98 @@
+name: Database Guardrails Check
+
+on:
+  pull_request:
+    paths:
+      - '**.sql'
+      - '**.py'
+  push:
+    branches:
+      - main
+    paths:
+      - '**.sql'
+
+jobs:
+  sql-static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: pip install pyyaml
+      
+      - name: Run SQL Static Analyzer
+        id: analyzer
+        run: |
+          python db-guardrails/scripts/sql_static_analyzer.py --file "${{ github.event.pull_request.head.sha }}" --strict --format json > analysis_report.json || true
+          cat analysis_report.json
+      
+      - name: Check for critical violations
+        run: |
+          CRITICAL=$(grep -o '"severity": "CRITICAL"' analysis_report.json | wc -l)
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "❌ Critical SQL issues found: $CRITICAL"
+            cat analysis_report.json
+            exit 1
+          fi
+          echo "✓ No critical SQL issues"
+      
+      - name: Comment on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('analysis_report.json', 'utf8'));
+            const summary = `
+            ### 🛡️ Database Guardrails Analysis
+            - **Critical**: ${report.critical}
+            - **High**: ${report.high}
+            - **Medium**: ${report.medium}
+            ${report.critical > 0 ? '❌ **BLOCKED**: Critical violations found' : '✓ **PASSED**: No critical violations'}
+            `;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+  query-execution-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Test Query Execution Guard
+        run: |
+          python db-guardrails/scripts/query_execution_guard.py \
+            --query "DELETE FROM users WHERE status = 'inactive'" \
+            --user "ci-user" \
+            --strict \
+            --report || true
+
+  mutation-review:
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'data-mutation')
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Flag for manual review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ **Manual Review Required**: This PR contains data mutations (INSERT/UPDATE/DELETE). Please verify with DBA.'
+            });

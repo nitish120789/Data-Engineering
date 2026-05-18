@@ -1,0 +1,140 @@
+# Database Guardrails Configuration
+# Controls detection sensitivity and enforcement levels
+
+# Query Execution Limits
+execution:
+  max_execution_seconds: 30
+  max_memory_mb: 1024
+  max_row_output: 1000000
+  statement_timeout_ms: 30000
+
+# Anti-Pattern Detection
+detection:
+  # Critical violations (fail immediately)
+  critical:
+    - delete_without_where
+    - update_without_where
+    - truncate_usage
+    - sql_injection_patterns
+    - multiple_statements_batch
+
+  # High severity violations (warn, can be overridden)
+  high:
+    - implicit_type_conversion
+    - correlated_subquery_risk
+    - cartesian_join_detected
+    - multi_table_update
+    - large_table_scan
+
+  # Medium severity (informational)
+  medium:
+    - hardcoded_values
+    - deprecated_functions
+    - select_star_usage
+    - missing_indexes
+
+# Mutation Safeguards
+mutations:
+  audit_enabled: true
+  require_approval_for:
+    - delete_operations
+    - update_large_table  # >1M rows
+    - truncate_operations
+  
+  approval_timeout_hours: 24
+  
+  # Metadata to capture
+  capture:
+    - session_id
+    - login_name
+    - query_text
+    - row_count
+    - execution_time
+    - transaction_status
+
+# Risk Scoring
+risk_scoring:
+  delete_without_where: 100
+  update_without_where: 100
+  truncate: 100
+  sql_injection: 100
+  no_transaction: 20
+  large_table_operation: 25
+  bulk_operation: 20
+  off_hours_execution: 15
+  concurrent_index_maintenance: 20
+
+# Whitelist Configurations
+whitelist:
+  # Users/roles that bypass some checks
+  privileged_users:
+    - 'sa'
+    - 'dbo'
+    - 'admin'
+  
+  # Queries allowed despite violations (use sparingly)
+  approved_patterns: []
+  
+  # Tables excluded from certain checks
+  excluded_tables:
+    - 'audit_log'
+    - 'temp_staging'
+
+# Enforcement Levels
+enforcement:
+  # strict: Block all violations
+  # moderate: Block critical, warn high
+  # permissive: Log only
+  level: 'moderate'
+  
+  # When to escalate to DBA
+  escalation:
+    - "HIGH severity + production"
+    - "CRITICAL severity"
+    - "DELETE operation + row_count > 100000"
+
+# Reporting
+reporting:
+  enabled: true
+  slack_webhook: "${SLACK_WEBHOOK_URL}"
+  email_recipients:
+    - dba-team@company.local
+  
+  # Report on violations exceeding these thresholds
+  alert_thresholds:
+    critical_count: 1
+    high_count: 5
+    medium_count: 20
+  
+  # Frequency: hourly, daily, weekly
+  frequency: daily
+  
+  metrics_to_track:
+    - total_queries_analyzed
+    - violations_detected
+    - violations_blocked
+    - false_positives
+    - approval_rate
+
+# CI/CD Integration
+ci_cd:
+  # Block PR merge if violations found
+  block_pr_on_critical: true
+  block_pr_on_high: false
+  
+  # Require manual approval for risky queries
+  require_dba_approval: true
+  
+  # Allowed environments
+  environments:
+    - development
+    - staging
+    - production
+
+# Logging
+logging:
+  level: INFO
+  destinations:
+    - file: /var/log/db-guardrails/guardrails.log
+    - database: guardrail.audit_log
+    - syslog: "YES"
