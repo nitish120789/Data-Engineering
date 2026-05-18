@@ -1,3 +1,0 @@
-pyodbc>=4.0.35
-pyyaml>=6.0
-requests>=2.28.0
